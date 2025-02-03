@@ -1,5 +1,6 @@
 <?php
-require_once '../../conectar.php';
+// require_once '../../conectar.php';
+require_once '../../conectartestTraz2.php';
 include("../../clase_encrip.php");
 // include("../../flujos/funciones.php");
 
@@ -8,6 +9,82 @@ $list_record = json_decode($post_data, true);
 $params = array();
 $options = array("Scrollable" => SQLSRV_CURSOR_KEYSET);
 if (isset($_GET['band'])) {
+
+    if ($_GET['band'] == 'get_ConsultaMina') {
+    $FechaInicial = $list_record['FechaInicial'];
+    $FechaFinal = $list_record['FechaFinal'];
+    $Cargo = ENCR::descript($list_record['Cargo']);
+    $Usuario = ENCR::descript($list_record['Usuario']);
+
+    /* $sql = "SELECT b.id, b.access_date, b.access_time, b.nombres, b.apellidos, b.Estado 
+            FROM biometrico.dbo.bitacoraV2 b
+            INNER JOIN biometrico.dbo.UsuariosBiometrico ub ON b.id = ub.Identificador
+            WHERE b.access_date BETWEEN ? AND ?
+            AND ub.idUsuario = ?
+            ORDER BY b.access_date, b.access_time;"; */
+    // $params = array($FechaInicial, $FechaFinal, $Usuario);
+    // $res = sqlsrv_query($conn, $sql, $params);
+    $sql = "SELECT b.id, b.access_date, b.access_time, b.nombres, b.apellidos, b.Estado 
+            FROM biometrico.dbo.bitacoraV2 b
+            INNER JOIN biometrico.dbo.UsuariosBiometrico ub ON b.id = ub.Identificador
+            WHERE b.access_date BETWEEN '2025-01-01' AND '2025-02-03'
+            AND ub.idUsuario = '7f764134-0963-49c1-869f-614921450c08'
+            ORDER BY b.access_date, b.access_time;";
+    $res = sqlsrv_query($conn, $sql);
+
+    $data = '<table class="table table-hover table-condensed table-bordered table-striped"><thead><tr><th>ID</th><th>Fecha</th><th>Hora</th><th>Nombres</th><th>Apellidos</th><th>Estado</th></tr></thead><tbody>';
+
+    while ($aa = sqlsrv_fetch_array($res)) {
+        $id = $aa['id'];
+        $Fecha = $aa['access_date']->format('Y-m-d');
+        $Hora = $aa['access_time']->format('H:i:s');
+        $Nombres = utf8_encode($aa['nombres']);
+        $Apellidos = utf8_encode($aa['apellidos']);
+        $Estado = utf8_encode($aa['Estado']);
+        $data .= "<tr><td>$id</td><td>$Fecha</td><td>$Hora</td><td>$Nombres</td><td>$Apellidos</td><td>$Estado</td></tr>";
+    }
+    $data .= '</tbody></table>';
+    $json =  $data;
+    }
+
+    if ($_GET['band'] == 'get_Cargos') {
+    $texto_Cargo = $list_record['texto_Cargo'];
+    $sql = "SELECT idSubGrupo, nombreSubGrupo FROM SubGrupos";
+    
+    if (!empty($texto_Cargo)) {
+        $sql .= " WHERE nombreSubGrupo LIKE '%$texto_Cargo%'";
+    }
+    
+    $res = sqlsrv_query($conn, $sql);
+    $data = [];
+
+    while ($aa = sqlsrv_fetch_array($res)) {
+        $idCargo = ENCR::encript($aa['idSubGrupo']);
+        $Descripcion = utf8_encode($aa['nombreSubGrupo']);
+        $registro = array('id' => $idCargo, 'name' => $Descripcion);
+        array_push($data, $registro);
+    }
+    $json = json_encode($data);
+    }
+
+    if ($_GET['band'] == 'get_UsuariosMina') {
+    $idSubGrupo = ENCR::descript($list_record['idSubGrupo']);
+    $sql = "SELECT ub.idUsuario, NombreCompleto 
+            FROM UsuariosBiometrico ub
+            INNER JOIN UsuarioGrupo ug ON ub.idUsuario = ug.idUsuario 
+            WHERE ug.idSubGrupo = ?";
+    $params = array($idSubGrupo);
+    $res = sqlsrv_query($conn, $sql, $params);
+    $data = [];
+
+    while ($aa = sqlsrv_fetch_array($res)) {
+        $idUsuario = ENCR::encript($aa['idUsuario']);
+        $Nombre = utf8_encode($aa['NombreCompleto']);
+        $registro = array('id' => $idUsuario, 'name' => $Nombre);
+        array_push($data, $registro);
+    }
+    $json = json_encode($data);
+}
 
     if ($_GET['band'] == 'get_Usuarios') {
         $sql = "SELECT idUsuario,NombreUsuarioLargo FROM Usuarios WHERE habilitado=1";
@@ -50,7 +127,7 @@ if (isset($_GET['band'])) {
     }
 
     if ($_GET['band'] == 'get_CentrosDeTrabajo') {
-        $sql = "SELECT idDestino, Descripcion FROM Destino order by Descripcion";
+        $sql = "SELECT idDestino, Descripcion FROM vDestinosUnidos order by Descripcion";
         $res = sqlsrv_query($conn, $sql);
         $data = [];
         while ($aa = sqlsrv_fetch_array($res)) {
