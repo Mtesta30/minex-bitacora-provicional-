@@ -194,6 +194,17 @@ async function get_ConsultaMina() {
     try {
         let response = await sendRequest(url, data);
         document.getElementById("div_tabla_mina").innerHTML = response;
+        $('#idTableMina').DataTable({
+            "language": {
+                "url": "//cdn.datatables.net/plug-ins/9dcbecd42ad/i18n/Spanish.json"
+            },
+            "ordering": false,
+            "searching": true,
+            dom: 'Bfrtip',
+            buttons: [
+                'excel', 'print'
+            ]
+        });
     } catch (error) {
         console.log(error);
     }

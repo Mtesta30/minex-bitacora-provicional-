@@ -385,10 +385,6 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                         <button type="button" id="button_mina" class="btn btn-primary" onclick="get_ConsultaMina()">Buscar</button>
                     </div>
                 </div>
-                 <!-- <div class="col-xs-1 col-sm-1 col-md-1 col-lg-1">
-                <label>&nbsp;</label><br>
-                <button type="button" id="button_excel_mina" class="btn btn-success" onclick="generarExcelMina()">Generar Excel</button>
-            </div> -->
                 <div class="table-responsive">
                     <div id="div_tabla_mina"></div>
                 </div>

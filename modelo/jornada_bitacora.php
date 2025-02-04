@@ -11,41 +11,52 @@ $options = array("Scrollable" => SQLSRV_CURSOR_KEYSET);
 if (isset($_GET['band'])) {
 
     if ($_GET['band'] == 'get_ConsultaMina') {
+    $CentroTrabajo = $list_record['CentroTrabajo'];
     $FechaInicial = $list_record['FechaInicial'];
     $FechaFinal = $list_record['FechaFinal'];
     $Cargo = ENCR::descript($list_record['Cargo']);
-    $Usuario = ENCR::descript($list_record['Usuario']);
+    $Usuario = isset($list_record['Usuario']) ? ENCR::descript($list_record['Usuario']) : null;
+    
+    // $sql = "SELECT * FROM fnObtenerHorasTrabajadas(?, ?, ?, ?)";
+    $sql = "SELECT * FROM biometrico.dbo.fnObtenerHorasTrabajadas(?, ?, 'bio_calle 13', ?)
+            WHERE HorasTrabajadas != 'Sin Salida';";
+    $params = array($FechaInicial, $FechaFinal, $Usuario);
+    $res = sqlsrv_query($conn, $sql, $params);
 
-    /* $sql = "SELECT b.id, b.access_date, b.access_time, b.nombres, b.apellidos, b.Estado 
-            FROM biometrico.dbo.bitacoraV2 b
-            INNER JOIN biometrico.dbo.UsuariosBiometrico ub ON b.id = ub.Identificador
-            WHERE b.access_date BETWEEN ? AND ?
-            AND ub.idUsuario = ?
-            ORDER BY b.access_date, b.access_time;"; */
-    // $params = array($FechaInicial, $FechaFinal, $Usuario);
-    // $res = sqlsrv_query($conn, $sql, $params);
-    $sql = "SELECT b.id, b.access_date, b.access_time, b.nombres, b.apellidos, b.Estado 
-            FROM biometrico.dbo.bitacoraV2 b
-            INNER JOIN biometrico.dbo.UsuariosBiometrico ub ON b.id = ub.Identificador
-            WHERE b.access_date BETWEEN '2025-01-01' AND '2025-02-03'
-            AND ub.idUsuario = '7f764134-0963-49c1-869f-614921450c08'
-            ORDER BY b.access_date, b.access_time;";
-    $res = sqlsrv_query($conn, $sql);
-
-    $data = '<table class="table table-hover table-condensed table-bordered table-striped"><thead><tr><th>ID</th><th>Fecha</th><th>Hora</th><th>Nombres</th><th>Apellidos</th><th>Estado</th></tr></thead><tbody>';
+    $data = '<table id="idTableMina" class="table table-hover table-condensed table-bordered table-striped">
+             <thead>
+                <tr>
+                    <th>Nombres</th>
+                    <th>Apellidos</th>
+                    <th>Fecha</th>
+                    <th>Hora Entrada</th>
+                    <th>Hora Salida</th>
+                    <th>Horas Trabajadas</th>
+                </tr>
+             </thead>
+             <tbody>';
 
     while ($aa = sqlsrv_fetch_array($res)) {
-        $id = $aa['id'];
-        $Fecha = $aa['access_date']->format('Y-m-d');
-        $Hora = $aa['access_time']->format('H:i:s');
-        $Nombres = utf8_encode($aa['nombres']);
-        $Apellidos = utf8_encode($aa['apellidos']);
-        $Estado = utf8_encode($aa['Estado']);
-        $data .= "<tr><td>$id</td><td>$Fecha</td><td>$Hora</td><td>$Nombres</td><td>$Apellidos</td><td>$Estado</td></tr>";
+        $Nombres = utf8_encode($aa['Nombre']);
+        $Apellidos = utf8_encode($aa['Apellido']);
+        $Fecha = $aa['Fecha']->format('Y-m-d');
+        $HoraEntrada = $aa['HoraEntrada']->format('H:i:s');
+        $HoraSalida = $aa['HoraSalida'] ? $aa['HoraSalida']->format('H:i:s') : 'Sin Salida';
+        $HorasTrabajadas = $aa['HorasTrabajadas'];
+        
+        $data .= "<tr>
+                    <td>$Nombres</td>
+                    <td>$Apellidos</td>
+                    <td>$Fecha</td>
+                    <td>$HoraEntrada</td>
+                    <td>$HoraSalida</td>
+                    <td>$HorasTrabajadas</td>
+                  </tr>";
     }
+    
     $data .= '</tbody></table>';
-    $json =  $data;
-    }
+    $json = $data;
+}
 
     if ($_GET['band'] == 'get_Cargos') {
     $texto_Cargo = $list_record['texto_Cargo'];
