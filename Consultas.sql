@@ -153,3 +153,4 @@ GROUP BY Nombre, Apellido
 
 SELECT *
 FROM dbo.fnObtenerHorasTrabajadas('2025-01-31', '2025-02-04', 'bio_calle 13', 'd001');
+

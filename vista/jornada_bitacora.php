@@ -122,10 +122,12 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     echo '<li><a href="#" class="opciones" data-toggle="collapse" data-target="#idConsultar"><span class="glyphicon glyphicon-search" style="color: #5c80c0;"></span>Consulta</a>
                         <ul id="idConsultar" class="collapse">';
                         if(isset($_SESSION['permisos_todos']['CONSULTAR TODOS'])){
-                        echo '<a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorActividad"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAACXBIWXMAAAsTAAALEwEAmpwYAAAE3UlEQVR4nO2bz2tdRRTHP7bxadUHFhulQtHSYmNx4SYSEwRTSnFhl1JtwaIIYoV24VJs4n/gqpQiVDEWxCq6MiBI8TfWpquSVEqkVFvQuEhrShvIe3LkPHgMc++buffMfdeaL5zNy9w5P2bm/JoJrGIVqdHuQbcEmsC4oQHGdc7a4zbgReAKcA140MAADwCLwAJwCFhLTTEMfO8o856BAd53/n4GeIoaYRNwAmh5lFlRwwwAY8BEgAEmdOyAfrviGdNSnsK7rxgFlnoodBm4GqC4S1f127wxSypD39AAzhdQzoouAHfQZ+zuowGepSb4og/Kf9kPRUd127t4pw8GEJ4uGil9wiZ1Or/otu/g7UCBF9Vzv6LefRC4HbgLeAgYAQ4Cn+vYkDmFdwe7VbalVNHhhMN8OnDlxUm+rIqGoqlJz3zgTph2fhNZTTGWEefz6DrwhsbzopAtPQksR/JuqcwmWAOcjhRAtuJjVgIAjwMXI2U4rbKXxkuRjGf0fFtDzvVspCwieyk0tbCJWfkUyncXRpci5LlStooc16ou9MxbbvssSLS4GSjTtZyyPBgbtarzFSXdJA6vKrzVQ5YVlVlkN8NwTnFyvqS3j4WE1N8zZLmssppjICdBkThfNQ5kyLKYajHGchjGJDlWuBe4kSFTknR4IoOZedYVgc8yZDpsMXk7kCS3vyXRDqQkDue/ZIANFcmzFXhdj5xkm39pjbCsHeMZ/Zs4xy1VGqBBOog33+fpNofQd8DeMm30diDdTRo8o6l1uyTNAbuKCNAOpIeNFZeQ+q6B4i4dA9alMMCIofL368VHVo3/s6bBTwPbdPcJDelvh3O+75TIg9YGOGio/FyG4h8Bj0TMJcb5OKOJM1e0Yp3IMIAkIxbb/kxG3/+JEvOOZLTVZCfcaZkKNykH35n/CriP8pAwfcoz/1HLYuhQSW/vU146xlZoZBhhp1U5PF8wHxjwhLoLRivv2wnucZgNyRM2BjZEpHsbi30ehxdz5jvfheJJj2N83qoltqzd2xi4GZ54exIaQHDS4fmtZVP0YsStzFbP6seEuqIGGPLw3WzZFp/V7m1sR0eSHCowAFo4dfN+1fpi5FJAhuhetUmGV5UB3JxmKsXV2E3gzZx22VlnvKSyVRlgh8NbkrCeKHo5+hvwGrDemW/BGRd7/ssYYJvD+48qrsdvOGmze7lRJJvsfLs98rumR7YgWDyQsDTAD/rt38D+KgyQhekCBrA4AuJfjnfNcTywRV/oCFg9ksoKRWXu8PbrLpB5nivgBIuE4H/RKNC26uBD417+9oh0fNLh/UHqh5KLHgMcKBKKjHA2JhGyeio76qzyFueblp7N1HjUkbFl1dcc9hQ34pTy4I6XNlZqfOrw/MZy8jVaO3Sey/e6n9/rWQ3LJmtIRrun6n+Y6MZaTyN0PtFtkzRCf3V4navD/x/s8viOU8Y3TjLX1x4+Eg5rgWMZRthgtPI+5Y9QI6zLKLnntY1V5sy7217oxyJt8dQYzLkYOamdnJhQ90lOw6aqG+1CRvgpJ6ma0WbGDjXIPUpD+tukJ8lxVz7lO0az43A0Mr0OoSN13PZ52FngaayPztXJ28dCYvQL2rqOacm1NMPbY/Vgug7YrEXLlBZOC9pUEfpTS9opHWP9ZmEV/F/wD2gwmw8TxclJAAAAAElFTkSuQmCC"width="25" height="25" alt="Imagen 20x20" style="color: #050c92;">Por Actividad</a><br>
+                        echo '
+                        <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorMina"><span class="glyphicon glyphicon-tower" ></span>Por Mina</a><br>
+                        <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorEmpresa"><span class="glyphicon glyphicon-folder-open"></span>Por Empresa</a><br>
+                        <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorActividad"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAACXBIWXMAAAsTAAALEwEAmpwYAAAE3UlEQVR4nO2bz2tdRRTHP7bxadUHFhulQtHSYmNx4SYSEwRTSnFhl1JtwaIIYoV24VJs4n/gqpQiVDEWxCq6MiBI8TfWpquSVEqkVFvQuEhrShvIe3LkPHgMc++buffMfdeaL5zNy9w5P2bm/JoJrGIVqdHuQbcEmsC4oQHGdc7a4zbgReAKcA140MAADwCLwAJwCFhLTTEMfO8o856BAd53/n4GeIoaYRNwAmh5lFlRwwwAY8BEgAEmdOyAfrviGdNSnsK7rxgFlnoodBm4GqC4S1f127wxSypD39AAzhdQzoouAHfQZ+zuowGepSb4og/Kf9kPRUd127t4pw8GEJ4uGil9wiZ1Or/otu/g7UCBF9Vzv6LefRC4HbgLeAgYAQ4Cn+vYkDmFdwe7VbalVNHhhMN8OnDlxUm+rIqGoqlJz3zgTph2fhNZTTGWEefz6DrwhsbzopAtPQksR/JuqcwmWAOcjhRAtuJjVgIAjwMXI2U4rbKXxkuRjGf0fFtDzvVspCwieyk0tbCJWfkUyncXRpci5LlStooc16ou9MxbbvssSLS4GSjTtZyyPBgbtarzFSXdJA6vKrzVQ5YVlVlkN8NwTnFyvqS3j4WE1N8zZLmssppjICdBkThfNQ5kyLKYajHGchjGJDlWuBe4kSFTknR4IoOZedYVgc8yZDpsMXk7kCS3vyXRDqQkDue/ZIANFcmzFXhdj5xkm39pjbCsHeMZ/Zs4xy1VGqBBOog33+fpNofQd8DeMm30diDdTRo8o6l1uyTNAbuKCNAOpIeNFZeQ+q6B4i4dA9alMMCIofL368VHVo3/s6bBTwPbdPcJDelvh3O+75TIg9YGOGio/FyG4h8Bj0TMJcb5OKOJM1e0Yp3IMIAkIxbb/kxG3/+JEvOOZLTVZCfcaZkKNykH35n/CriP8pAwfcoz/1HLYuhQSW/vU146xlZoZBhhp1U5PF8wHxjwhLoLRivv2wnucZgNyRM2BjZEpHsbi30ehxdz5jvfheJJj2N83qoltqzd2xi4GZ54exIaQHDS4fmtZVP0YsStzFbP6seEuqIGGPLw3WzZFp/V7m1sR0eSHCowAFo4dfN+1fpi5FJAhuhetUmGV5UB3JxmKsXV2E3gzZx22VlnvKSyVRlgh8NbkrCeKHo5+hvwGrDemW/BGRd7/ssYYJvD+48qrsdvOGmze7lRJJvsfLs98rumR7YgWDyQsDTAD/rt38D+KgyQhekCBrA4AuJfjnfNcTywRV/oCFg9ksoKRWXu8PbrLpB5nivgBIuE4H/RKNC26uBD417+9oh0fNLh/UHqh5KLHgMcKBKKjHA2JhGyeio76qzyFueblp7N1HjUkbFl1dcc9hQ34pTy4I6XNlZqfOrw/MZy8jVaO3Sey/e6n9/rWQ3LJmtIRrun6n+Y6MZaTyN0PtFtkzRCf3V4navD/x/s8viOU8Y3TjLX1x4+Eg5rgWMZRthgtPI+5Y9QI6zLKLnntY1V5sy7217oxyJt8dQYzLkYOamdnJhQ90lOw6aqG+1CRvgpJ6ma0WbGDjXIPUpD+tukJ8lxVz7lO0az43A0Mr0OoSN13PZ52FngaayPztXJ28dCYvQL2rqOacm1NMPbY/Vgug7YrEXLlBZOC9pUEfpTS9opHWP9ZmEV/F/wD2gwmw8TxclJAAAAAElFTkSuQmCC"width="25" height="25" alt="Imagen 20x20" style="color: #050c92;">Por Actividad</a><br>
                         <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorReglas"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAYAAAAeP4ixAAAACXBIWXMAAAsTAAALEwEAmpwYAAABt0lEQVR4nO2av0rDQBzHP7q09QFKcXEVHMTRoUuH0k3wCRxctA4+jYu0i30DBf9U30IQn0B3ETcrBxc45NLE5O7y+0m/EJIhF+6T733zhSSwUnDtAUfAGorVBz6ABXAJrKNQA+DTQnzb/YU2Z1wnpsAI+NLmzG+IbNJDTTDucrryTHbkwIhdZq4TZnsFNj3nDSU74zoxA17ssdn3POeLdMaFmNg73HNgznLGiYJZlgkDMy4YP5IAUzYTRWo0M3/NBBKd8fVEF3jW5MygIBN1nTlwluohCSDyJlsHpg3c2rFvwBYNZ6LMo9cHcedAbCOkJ8o8ehuDqNITIiD6gXoiTy3g2l77HdhBQU807kTInnCduEnpRIyeaAP3EjJRx5lWaidi9EQnhROxeyI5RIyeMBAPEjJRR+IyocKJaYSeMBBz7T3RkZKJbg1nkjsxi9QT8//QE/PYELseiCqTbRQiezORZeKYsEoGkencfmgx2wlhlCTYsWEag/DBnKIUIgSMGIg6MBvSIKrAGIhHiRA+mLFWiDIwaiCWwaiDcGGyPxTM8VPKxo7lzEKjE3kwqiEy7Qd+CbGS0Q+F/0cn+CFp3AAAAABJRU5ErkJggg==" width="25" height="25" alt="Imagen 20x20">Por Reglas</a><br>
-                        <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorEmpresa"><span class="glyphicon glyphicon-folder-open"></span>Por Empresa</a>
-                        <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorMina"><span class="glyphicon glyphicon-tower" ></span>Por Mina</a>';
+                        ';
                         }
                     echo '</ul>
                     </li>';
@@ -354,42 +356,47 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
             </div>
 
             <div class="collapse fade" id="idPorMina" tabindex="-1" role="dialog" aria-labelledby="collapse" aria-hidden="true">
-            <div class="container-fluid">
-                <div class="row">
-                    <h2 class="">CONSULTA BITACORA POR MINA</h2>
-                    <div class="col-xs-3 col-sm-3 col-md-3 col-lg-3">
-                        <label for="CentroTrabajoMina">Centro de Trabajo:</label>
-                        <input type="text" id="CentroTrabajoMina" list="list_CentrotrabajoMina" class="form-control" placeholder="Escriba un Centro de Trabajo" onkeyup="list_CentrotrabajoBio(this)" />
-                        <datalist id="list_CentrotrabajoMina"></datalist>
+                <div class="container-fluid">
+                    <div class="row">
+                        <h2 class="">CONSULTA BITACORA POR MINA</h2>
+                        <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
+                            <label for="CentroTrabajoMina">Centro de Trabajo:</label>
+                            <input type="text" id="CentroTrabajoMina" list="list_CentrotrabajoMina" class="form-control" 
+                            value="Dinastia"
+                            disabled />
+                            <datalist id="list_CentrotrabajoMina">
+                                <option value="Dinastia" data-id="UHJiK3dHN25oWWZuU3AyVlVQS1B6SC9KelVLUmY4M2IvWU5zbXVkRGlqMVo2aWpZa2Jic0hwSjdWdnArYW14TQ=="></option>
+                            </datalist>
+                        </div>
+                        <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
+                            <label for="FechaInicialMina">Fecha Inicio:</label>
+                            <input class="form-control" type="date" id="FechaInicialMina" />
+                        </div>
+                        <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
+                            <label for="FechaFinalMina">Fecha Fin:</label>
+                            <input class="form-control" type="date" id="FechaFinalMina" />
+                        </div>
+                        <div class="clearfix"></div>
+                        <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
+                            <label for="CargoMina">Cargo:</label>
+                            <input type="text" id="CargoMina" list="list_CargoMina" class="form-control" placeholder="Opcion no Disponible por el Momento" onkeyup="list_CargoMina(this)" disabled/>
+                            <datalist id="list_CargoMina"></datalist>
+                        </div>
+                        <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
+                            <label for="UsuarioMina">Usuario:</label>
+                            <input type="text" id="UsuarioMina" list="list_UsuarioMina" class="form-control" placeholder="Opcion no Disponible por el Momento" onkeyup="list_UsuarioMina(this)" disabled/>
+                            <datalist id="list_UsuarioMina"></datalist>
+                        </div>
+                        <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
+                            <label>&nbsp;</label><br>
+                            <button type="button" id="button_mina" class="btn btn-primary" onclick="get_ConsultaMina()">Buscar</button>
+                        </div>
                     </div>
-                    <div class="col-xs-3 col-sm-3 col-md-3 col-lg-3">
-                        <label for="FechaInicialMina">Fecha Inicio:</label>
-                        <input class="form-control" type="date" id="FechaInicialMina"></input>
+                    <div class="table-responsive">
+                        <div id="div_tabla_mina"></div>
                     </div>
-                    <div class="col-xs-3 col-sm-3 col-md-3 col-lg-3">
-                        <label for="FechaFinalMina">Fecha Fin:</label>
-                        <input class="form-control" type="date" id="FechaFinalMina"></input>
-                    </div>
-                    <div class="col-xs-3 col-sm-3 col-md-3 col-lg-3">
-                        <label for="CargoMina">Cargo:</label>
-                        <input type="text" id="CargoMina" list="list_CargoMina" class="form-control" placeholder="Escriba un Cargo" onkeyup="list_CargoMina(this)" />
-                        <datalist id="list_CargoMina"></datalist>
-                    </div>
-                    <div class="col-xs-3 col-sm-3 col-md-3 col-lg-3">
-                        <label for="UsuarioMina">Usuario:</label>
-                        <input type="text" id="UsuarioMina" list="list_UsuarioMina" class="form-control" placeholder="Escriba un Usuario" onkeyup="list_UsuarioMina(this)" />
-                        <datalist id="list_UsuarioMina"></datalist>
-                    </div>
-                    <div class="col-xs-1 col-sm-1 col-md-1 col-lg-1">
-                        <label>&nbsp;</label><br>
-                        <button type="button" id="button_mina" class="btn btn-primary" onclick="get_ConsultaMina()">Buscar</button>
-                    </div>
-                </div>
-                <div class="table-responsive">
-                    <div id="div_tabla_mina"></div>
                 </div>
             </div>
-            </div>      
 
             <div class="collapse fade" id="idPorReglas" tabindex="-1" role="dialog" aria-labelledby="collapse" aria-hidden="true">
                 <div class="row">

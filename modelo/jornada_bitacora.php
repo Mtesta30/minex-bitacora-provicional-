@@ -11,91 +11,90 @@ $options = array("Scrollable" => SQLSRV_CURSOR_KEYSET);
 if (isset($_GET['band'])) {
 
     if ($_GET['band'] == 'get_ConsultaMina') {
-    $CentroTrabajo = $list_record['CentroTrabajo'];
-    $FechaInicial = $list_record['FechaInicial'];
-    $FechaFinal = $list_record['FechaFinal'];
-    $Cargo = ENCR::descript($list_record['Cargo']);
-    $Usuario = isset($list_record['Usuario']) ? ENCR::descript($list_record['Usuario']) : null;
-    
-    // $sql = "SELECT * FROM fnObtenerHorasTrabajadas(?, ?, ?, ?)";
-    $sql = "SELECT * FROM biometrico.dbo.fnObtenerHorasTrabajadas(?, ?, 'bio_calle 13', ?)
-            WHERE HorasTrabajadas != 'Sin Salida';";
-    $params = array($FechaInicial, $FechaFinal, $Usuario);
-    $res = sqlsrv_query($conn, $sql, $params);
-
-    $data = '<table id="idTableMina" class="table table-hover table-condensed table-bordered table-striped">
-             <thead>
-                <tr>
-                    <th>Nombres</th>
-                    <th>Apellidos</th>
-                    <th>Fecha</th>
-                    <th>Hora Entrada</th>
-                    <th>Hora Salida</th>
-                    <th>Horas Trabajadas</th>
-                </tr>
-             </thead>
-             <tbody>';
-
-    while ($aa = sqlsrv_fetch_array($res)) {
-        $Nombres = utf8_encode($aa['Nombre']);
-        $Apellidos = utf8_encode($aa['Apellido']);
-        $Fecha = $aa['Fecha']->format('Y-m-d');
-        $HoraEntrada = $aa['HoraEntrada']->format('H:i:s');
-        $HoraSalida = $aa['HoraSalida'] ? $aa['HoraSalida']->format('H:i:s') : 'Sin Salida';
-        $HorasTrabajadas = $aa['HorasTrabajadas'];
+        $CentroTrabajo = $list_record['CentroTrabajo'];
+        $FechaInicial = $list_record['FechaInicial'];
+        $FechaFinal = $list_record['FechaFinal'];
+        $Cargo = ENCR::descript($list_record['Cargo']);
+        $Usuario = isset($list_record['Usuario']) ? ENCR::descript($list_record['Usuario']) : null;
         
-        $data .= "<tr>
-                    <td>$Nombres</td>
-                    <td>$Apellidos</td>
-                    <td>$Fecha</td>
-                    <td>$HoraEntrada</td>
-                    <td>$HoraSalida</td>
-                    <td>$HorasTrabajadas</td>
-                  </tr>";
+        $sql = "SELECT * FROM biometrico.dbo.fnObtenerHorasTrabajadas(?, ?, 'bio_calle 13', ?)
+                WHERE HorasTrabajadas != 'Sin Salida';";
+        $params = array($FechaInicial, $FechaFinal, $Usuario);
+        $res = sqlsrv_query($conn, $sql, $params);
+
+        $data = '<table id="idTableMina" class="table table-hover table-condensed table-bordered table-striped">
+                 <thead>
+                    <tr>
+                        <th>Nombres</th>
+                        <th>Apellidos</th>
+                        <th>Fecha</th>
+                        <th>Hora Entrada</th>
+                        <th>Hora Salida</th>
+                        <th>Horas Trabajadas</th>
+                    </tr>
+                 </thead>
+                 <tbody>';
+
+        while ($aa = sqlsrv_fetch_array($res)) {
+            $Nombres = utf8_encode($aa['Nombre']);
+            $Apellidos = utf8_encode($aa['Apellido']);
+            $Fecha = $aa['Fecha']->format('Y-m-d');
+            $HoraEntrada = $aa['HoraEntrada']->format('H:i:s');
+            $HoraSalida = $aa['HoraSalida'] ? $aa['HoraSalida']->format('H:i:s') : 'Sin Salida';
+            $HorasTrabajadas = $aa['HorasTrabajadas'];
+            
+            $data .= "<tr>
+                        <td>$Nombres</td>
+                        <td>$Apellidos</td>
+                        <td>$Fecha</td>
+                        <td>$HoraEntrada</td>
+                        <td>$HoraSalida</td>
+                        <td>$HorasTrabajadas</td>
+                      </tr>";
+        }
+        
+        $data .= '</tbody></table>';
+        $json = $data;
     }
-    
-    $data .= '</tbody></table>';
-    $json = $data;
-}
 
     if ($_GET['band'] == 'get_Cargos') {
-    $texto_Cargo = $list_record['texto_Cargo'];
-    $sql = "SELECT idSubGrupo, nombreSubGrupo FROM SubGrupos";
-    
-    if (!empty($texto_Cargo)) {
-        $sql .= " WHERE nombreSubGrupo LIKE '%$texto_Cargo%'";
-    }
-    
-    $res = sqlsrv_query($conn, $sql);
-    $data = [];
+        $texto_Cargo = $list_record['texto_Cargo'];
+        $sql = "SELECT idSubGrupo, nombreSubGrupo FROM SubGrupos";
+        
+        if (!empty($texto_Cargo)) {
+            $sql .= " WHERE nombreSubGrupo LIKE '%$texto_Cargo%'";
+        }
+        
+        $res = sqlsrv_query($conn, $sql);
+        $data = [];
 
-    while ($aa = sqlsrv_fetch_array($res)) {
-        $idCargo = ENCR::encript($aa['idSubGrupo']);
-        $Descripcion = utf8_encode($aa['nombreSubGrupo']);
-        $registro = array('id' => $idCargo, 'name' => $Descripcion);
-        array_push($data, $registro);
-    }
-    $json = json_encode($data);
+        while ($aa = sqlsrv_fetch_array($res)) {
+            $idCargo = ENCR::encript($aa['idSubGrupo']);
+            $Descripcion = utf8_encode($aa['nombreSubGrupo']);
+            $registro = array('id' => $idCargo, 'name' => $Descripcion);
+            array_push($data, $registro);
+        }
+        $json = json_encode($data);
     }
 
     if ($_GET['band'] == 'get_UsuariosMina') {
-    $idSubGrupo = ENCR::descript($list_record['idSubGrupo']);
-    $sql = "SELECT ub.idUsuario, NombreCompleto 
-            FROM UsuariosBiometrico ub
-            INNER JOIN UsuarioGrupo ug ON ub.idUsuario = ug.idUsuario 
-            WHERE ug.idSubGrupo = ?";
-    $params = array($idSubGrupo);
-    $res = sqlsrv_query($conn, $sql, $params);
-    $data = [];
+        $idSubGrupo = ENCR::descript($list_record['idSubGrupo']);
+        $sql = "SELECT ub.idUsuario, NombreCompleto 
+                FROM UsuariosBiometrico ub
+                INNER JOIN UsuarioGrupo ug ON ub.idUsuario = ug.idUsuario 
+                WHERE ug.idSubGrupo = ?";
+        $params = array($idSubGrupo);
+        $res = sqlsrv_query($conn, $sql, $params);
+        $data = [];
 
-    while ($aa = sqlsrv_fetch_array($res)) {
-        $idUsuario = ENCR::encript($aa['idUsuario']);
-        $Nombre = utf8_encode($aa['NombreCompleto']);
-        $registro = array('id' => $idUsuario, 'name' => $Nombre);
-        array_push($data, $registro);
+        while ($aa = sqlsrv_fetch_array($res)) {
+            $idUsuario = ENCR::encript($aa['idUsuario']);
+            $Nombre = utf8_encode($aa['NombreCompleto']);
+            $registro = array('id' => $idUsuario, 'name' => $Nombre);
+            array_push($data, $registro);
+        }
+        $json = json_encode($data);
     }
-    $json = json_encode($data);
-}
 
     if ($_GET['band'] == 'get_Usuarios') {
         $sql = "SELECT idUsuario,NombreUsuarioLargo FROM Usuarios WHERE habilitado=1";

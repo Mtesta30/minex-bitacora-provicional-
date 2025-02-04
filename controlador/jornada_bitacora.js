@@ -113,23 +113,6 @@ async function list_CentrotrabajoBio(object) {
     }
 }
 
-async function generarExcelMina() {
-    let tabla = document.getElementById("div_tabla_mina").innerHTML;
-    let form = document.createElement("form");
-    form.method = "POST";
-    form.action = "../vista/xls.php";
-
-    let input = document.createElement("input");
-    input.type = "hidden";
-    input.name = "tabla";
-    input.value = tabla;
-    form.appendChild(input);
-
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
-}
-
 async function list_CargoMina(object) {
     let list_Cargo = document.getElementById("list_CargoMina");
     let url = "../modelo/jornada_bitacora.php?band=get_Cargos";
