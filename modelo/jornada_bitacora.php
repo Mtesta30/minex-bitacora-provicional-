@@ -25,6 +25,7 @@ if (isset($_GET['band'])) {
         $data = '<table id="idTableMina" class="table table-hover table-condensed table-bordered table-striped">
                  <thead>
                     <tr>
+                        <th>Identificador</th>
                         <th>Nombres</th>
                         <th>Apellidos</th>
                         <th>Fecha</th>
@@ -36,6 +37,7 @@ if (isset($_GET['band'])) {
                  <tbody>';
 
         while ($aa = sqlsrv_fetch_array($res)) {
+            $id = ($aa['ID']);
             $Nombres = utf8_encode($aa['Nombre']);
             $Apellidos = utf8_encode($aa['Apellido']);
             $Fecha = $aa['Fecha']->format('Y-m-d');
@@ -44,6 +46,7 @@ if (isset($_GET['band'])) {
             $HorasTrabajadas = $aa['HorasTrabajadas'];
             
             $data .= "<tr>
+                        <td>$id</td>
                         <td>$Nombres</td>
                         <td>$Apellidos</td>
                         <td>$Fecha</td>
