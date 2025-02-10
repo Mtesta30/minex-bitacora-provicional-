@@ -121,7 +121,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     if(isset($_SESSION['permisos_todos']['CONSULTAS_DE_TAREAS'])){
                     echo '<li><a href="#" class="opciones" data-toggle="collapse" data-target="#idConsultar"><span class="glyphicon glyphicon-search" style="color: #5c80c0;"></span>Consulta</a>
                         <ul id="idConsultar" class="collapse">
-                        <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorMina"><span class="glyphicon glyphicon-tower" ></span>Por Mina</a><br>';
+                        <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" ><span class="glyphicon glyphicon-tower" ></span>Por Mina</a><br>';
                         if(isset($_SESSION['permisos_todos']['CONSULTAR TODOS'])){
                         echo '
                         <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorEmpresa"><span class="glyphicon glyphicon-folder-open"></span>Por Empresa</a><br>
@@ -355,7 +355,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                 </div>
             </div>
 
-            <div class="collapse in" id="idPorMina" tabindex="-1" role="dialog" aria-labelledby="collapse" aria-hidden="true">
+            <div class="" id="idPorMina" tabindex="-1" role="dialog" aria-labelledby="collapse" aria-hidden="true">
                 <div class="container-fluid">
                     <div class="row">
                         <h2 class="">CONSULTA BITACORA POR MINA</h2>
