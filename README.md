@@ -225,3 +225,66 @@ Gestión de turnos de empleados.
 **Vistas:**
 
 - vDestinosUnidos
+
+## Documentación de la Tabla y Procedimiento
+
+### Tabla: bitacora
+
+La tabla `bitacora` se utiliza para registrar los accesos de los usuarios. A continuación, se detallan sus columnas y su propósito:
+
+- **access_date:** Fecha de acceso.
+- **id:** Identificación del usuario.
+- **date_time:** Fecha y hora del acceso.
+- **access_time:** Hora del acceso.
+- **nombres:** Nombres del usuario.
+- **apellidos:** Apellidos del usuario.
+- **Estado:** Estado del acceso.
+- **dispositivo:** Dispositivo utilizado para el acceso.
+- **año:** Año del acceso, calculado automáticamente.
+- **consecutivo:** Número consecutivo del acceso.
+- **Estado_real:** Estado real del acceso.
+- **marcado:** Indicador de si el acceso ha sido marcado.
+- **Tipo:** Tipo de acceso.
+- **tipo_registro:** Tipo de registro (0 = automático, 1 = manual).
+
+Además, la tabla tiene un trigger llamado `Consecutivos` que se activa después de una inserción para asignar un número consecutivo al acceso.
+
+### Procedimiento: asig_consecutivo
+
+El procedimiento `asig_consecutivo` se encarga de asignar un número consecutivo a los registros de acceso en la tabla `bitacora`. A continuación, se detalla su funcionamiento:
+
+#### Parámetro de Entrada:
+
+- **@id:** Identificación del usuario.
+
+#### Variables Declaradas:
+
+- **@consecutivo:** Número consecutivo.
+- **@tiempo:** Fecha y hora del acceso.
+- **@hora_difere:** Diferencia en horas entre dos accesos.
+- **@hora_parcial:** Hora parcial del acceso.
+- **@hora_ultima:** Última hora del acceso.
+- **@estado:** Estado del acceso.
+- **@tipoEmpl:** Tipo de empleado.
+- **@marcado:** Indicador de si el acceso ha sido marcado.
+
+#### Lógica del Procedimiento:
+
+1. Se obtiene la última hora de acceso del usuario.
+2. Se calcula la diferencia en horas entre dos accesos.
+3. Se determina el tipo de empleado y se marca el acceso si es necesario.
+4. Se asigna un número consecutivo al acceso.
+5. Se actualiza el estado real del acceso y se marca como entrada o salida según corresponda.
+6. Se registran los cambios en la tabla `logs` para auditoría.
+
+### Tablas Utilizadas
+
+- **bitacora:** Tabla principal donde se registran los accesos.
+- **UsuariosEmpresa:** Tabla que relaciona a los usuarios con las empresas.
+- **UsuariosDetalle:** Tabla que contiene los detalles de los usuarios.
+- **logs:** Tabla utilizada para registrar logs de auditoría.
+
+### Funciones y Procedimientos Utilizados
+
+- **Procedimiento `asig_consecutivo`:** Asigna un número consecutivo a los registros de acceso.
+- **Trigger `Consecutivos`:** Se activa después de una inserción en la tabla `bitacora` para ejecutar el procedimiento `asig_consecutivo`.

@@ -16,7 +16,7 @@ if (isset($_GET['band'])) {
         $FechaFinal = $list_record['FechaFinal'];
         $Cargo = ENCR::descript($list_record['Cargo']);
         $Usuario = isset($list_record['Usuario']) ? ENCR::descript($list_record['Usuario']) : null;
-        
+
         $sql = "SELECT * FROM biometrico.dbo.fnObtenerHorasTrabajadas(?, ?, 'bio_calle 13', ?)
                 WHERE HorasTrabajadas != 'Sin Salida';";
         $params = array($FechaInicial, $FechaFinal, $Usuario);
@@ -44,7 +44,7 @@ if (isset($_GET['band'])) {
             $HoraEntrada = $aa['HoraEntrada']->format('H:i:s');
             $HoraSalida = $aa['HoraSalida'] ? $aa['HoraSalida']->format('H:i:s') : 'Sin Salida';
             $HorasTrabajadas = $aa['HorasTrabajadas'];
-            
+
             $data .= "<tr>
                         <td>$id</td>
                         <td>$Nombres</td>
@@ -55,7 +55,7 @@ if (isset($_GET['band'])) {
                         <td>$HorasTrabajadas</td>
                       </tr>";
         }
-        
+
         $data .= '</tbody></table>';
         $json = $data;
     }
@@ -63,11 +63,11 @@ if (isset($_GET['band'])) {
     if ($_GET['band'] == 'get_Cargos') {
         $texto_Cargo = $list_record['texto_Cargo'];
         $sql = "SELECT idSubGrupo, nombreSubGrupo FROM SubGrupos";
-        
+
         if (!empty($texto_Cargo)) {
             $sql .= " WHERE nombreSubGrupo LIKE '%$texto_Cargo%'";
         }
-        
+
         $res = sqlsrv_query($conn, $sql);
         $data = [];
 
@@ -257,7 +257,7 @@ if (isset($_GET['band'])) {
                 $idBitacora = ENCR::encript($aa['id_Bitacora']);
                 $FechaRegistro = ($aa['FechaRegistro'] <> NULL) ? date_format($aa['FechaRegistro'], 'Y-m-d H:i:s') : 'N/A';
                 $tiquete = number_format($aa['Tiquete_Registro']);
-                $Horas =  substr(date_format($aa['Horas'],'Y-m-d H:i:s'),11,5); 
+                $Horas =  substr(date_format($aa['Horas'], 'Y-m-d H:i:s'), 11, 5);
                 $registro = array(
                     'Descripcion' => $Descripcion,
                     'idUsuario' => $idUsuario,
@@ -391,13 +391,13 @@ if (isset($_GET['band'])) {
         $horas_distribuir = $list_record['horas_distribuir'];
         $minutos_distribuir = $list_record['minutos_distribuir'];
         $Hora_pendientes = $list_record['Hora_pendientes'];
-      
-       // $idTiquete = $list_record['idTiquete'];
+
+        // $idTiquete = $list_record['idTiquete'];
         $Descripcion = $list_record['Descripcion'];
         $idusuarioRegistra = $list_record['idusuarioRegistra'];
         $tiquete = $list_record['idTiquete'];
 
-       /* $sql_user ="SELECT Identificacion FROM UsuariosDetalle WHERE idUsuario='$idUsuario'";
+        /* $sql_user ="SELECT Identificacion FROM UsuariosDetalle WHERE idUsuario='$idUsuario'";
         $res= sqlsrv_query($conn,$sql_user);
         $row = sqlsrv_fetch_array($res, SQLSRV_FETCH_ASSOC);
         $Identificacion = $row['Identificacion'];
@@ -410,19 +410,20 @@ if (isset($_GET['band'])) {
         }
         $valorRetorno = utf8_encode($valorRetorno);
         if ($valorRetorno == '') { */
-       /*     $sql = "EXECUTE SAVE_JornadaBitacora @idBitacora='$idBitacora', @idUsuario='$idUsuario', @idCentroTrabajo='$idcentroTrabajo', @idActividad='$idActividad', 
+        /*     $sql = "EXECUTE SAVE_JornadaBitacora @idBitacora='$idBitacora', @idUsuario='$idUsuario', @idCentroTrabajo='$idcentroTrabajo', @idActividad='$idActividad', 
                @idUnidadNegocio='$idUnidadNegocio',@fechaInicio='$fechaInicial',@fechaFinal='$fechaFinal',@descripcion='$Descripcion',@idUsuario_Registra='$idusuarioRegistra',
                @tiquete='$tiquete', @horas:$horas_distribuir;";
-*/      $sql = "EXECUTE SAVE_JornadaBitacora @idBitacora='$idBitacora', @idUsuario='$idUsuario', @idCentroTrabajo='$idcentroTrabajo', @idActividad='$idActividad', 
+*/
+        $sql = "EXECUTE SAVE_JornadaBitacora @idBitacora='$idBitacora', @idUsuario='$idUsuario', @idCentroTrabajo='$idcentroTrabajo', @idActividad='$idActividad', 
               @descripcion='$Descripcion',@idUsuario_Registra='$idusuarioRegistra', @idUnidadNegocio='$idUnidadNegocio',
               @tiquete='$tiquete', @horas='$horas_distribuir', @minutos='$minutos_distribuir';";
-   //     $res = sqlsrv_query($conn, $sql);
+        //     $res = sqlsrv_query($conn, $sql);
         $registro = array(
-                'response' => 1,
-                'message_error' => $message_error
+            'response' => 1,
+            'message_error' => $message_error
         );
 
-     /*   } else {
+        /*   } else {
             $message_error = $valorRetorno;
             $registro = array(
                 'response' => 0,
@@ -512,7 +513,6 @@ if (isset($_GET['band'])) {
                 $json .= '<td>' . $Sueldo . '</td>';
                 $json .= '<td>' . $Fecha . '</td>';
                 $json .= '</tr>';
-
             }
             $json .= '</tbody></table></div></div>';
         } else {
@@ -638,7 +638,7 @@ if (isset($_GET['band'])) {
     }
 
     if ($_GET['band'] == 'cargar_turnos') {
-        $sql="SELECT * FROM turnos_empleados";
+        $sql = "SELECT * FROM turnos_empleados";
         $res = sqlsrv_query($conn, $sql);
         $data = [];
         while ($aa = sqlsrv_fetch_array($res)) {
@@ -673,9 +673,9 @@ if (isset($_GET['band'])) {
 
         $clausulas = [];
         foreach ($list_record as $clave => $valor) {
-             $clave.'  -';
+            $clave . '  -';
             if (($clave != 'FechaInicial') && ($clave != 'FechaFinal') && ($clave != 'idMiUsuario')) {
-                $clausulas[] = "vJornadaBitacora.$clave = '".ENCR::descript($valor)."'";
+                $clausulas[] = "vJornadaBitacora.$clave = '" . ENCR::descript($valor) . "'";
             }
         }
 
@@ -702,7 +702,7 @@ if (isset($_GET['band'])) {
             <thead>
             <tr>';
         $data .= '<th class="text-center" data-column="Nombre">Nombre</th>';
-        $data .= '<th class="text-center" data-column="Localizacion">Centro Trabajo</th>';       
+        $data .= '<th class="text-center" data-column="Localizacion">Centro Trabajo</th>';
         $data .= '<th class="text-center" data-column="Cargo">Cargo</th>';
         $data .= '<th class="text-center" data-column="Fechai">Hora</th>';
         $data .= '</tr></thead>';
@@ -716,14 +716,14 @@ if (isset($_GET['band'])) {
             $Actividad = utf8_encode($aa['Actividad']);
             $CentroTrabajo = utf8_encode($aa['CentroTrabajo']);
             //$Horas = utf8_encode($aa['Horas']);
-             $Horas = substr(date_format($aa['Horas'],'Y-m-d H:i:s'),11,5);
+            $Horas = substr(date_format($aa['Horas'], 'Y-m-d H:i:s'), 11, 5);
             $Costo_hora = utf8_encode(number_format($aa['Costo_hora'], 2));
             $Costo_actividad = utf8_encode(number_format($aa['Costo_actividad'], 2));
             $Sueldo = utf8_encode(number_format($aa['Sueldo'], 2));
             $registro = array(
                 'Usuario' => $Usuario,
-                'CentroTrabajo' => $CentroTrabajo,    
-                'Cargo' => $Cargo,                
+                'CentroTrabajo' => $CentroTrabajo,
+                'Cargo' => $Cargo,
                 'Horas' => $Horas,
             );
             foreach ($registro as $clave => $valor) {
@@ -738,7 +738,7 @@ if (isset($_GET['band'])) {
     }
 
     if ($_GET['band'] == 'get_dispositivos') {
-        $sql="SELECT dispositivo from biometrico.dbo.bitacora group by dispositivo";
+        $sql = "SELECT dispositivo from biometrico.dbo.bitacora group by dispositivo";
         $res = sqlsrv_query($conn, $sql);
         $data = [];
         while ($aa = sqlsrv_fetch_array($res)) {
@@ -754,19 +754,19 @@ if (isset($_GET['band'])) {
         $FechaInicial = $list_record['FechaInicial'];
         $FechaFinal = $list_record['FechaFinal'];
         $list_empresa = ENCR::descript($list_record['list_empresa']);
-        $list_CentroConsulta =$list_record['list_CentroConsulta'];
+        $list_CentroConsulta = $list_record['list_CentroConsulta'];
         $list_UsuarioConsulta = ENCR::descript($list_record['list_UsuarioConsulta']);
-        if ($list_CentroConsulta<>'')
-             $centro= "'".$list_CentroConsulta."'"; 
+        if ($list_CentroConsulta <> '')
+            $centro = "'" . $list_CentroConsulta . "'";
         else
-            $centro='null';
+            $centro = 'null';
 
-        if ($list_UsuarioConsulta<>'')
-            $user= "'".$list_UsuarioConsulta."'";  
+        if ($list_UsuarioConsulta <> '')
+            $user = "'" . $list_UsuarioConsulta . "'";
         else
-            $user= 'null';
+            $user = 'null';
         $json = '';
-        $sql = "SELECT * from traz.dbo.lista_bitacora ('$FechaInicial','$FechaFinal','$list_empresa',".$centro.",".$user.")";
+        $sql = "SELECT * from traz.dbo.lista_bitacora ('$FechaInicial','$FechaFinal','$list_empresa'," . $centro . "," . $user . ")";
 
         $res = sqlsrv_query($conn, $sql, $params, $options);
         $row_permiso = sqlsrv_num_rows($res);
@@ -778,11 +778,11 @@ if (isset($_GET['band'])) {
             <tr>';
         $data .= '<th class="text-center" data-column="Nombre">Nombre</th>';
         $data .= '<th class="text-center" data-column="dis">Dispositivo</th>';
-        $data .= '<th class="text-center" data-column="Tiquete">Tiquete</th>';     
+        $data .= '<th class="text-center" data-column="Tiquete">Tiquete</th>';
         $data .= '<th class="text-center" data-column="HoraEntrada">Hora Entrada</th>';
         $data .= '<th class="text-center" data-column="HoraSalida">Hora Salida</th>';
         $data .= '<th class="text-center" data-column="Fechai">Hora</th>';
-    
+
         $data .= '</tr></thead>';
         $data .= '<tbody>';
         while ($aa = sqlsrv_fetch_array($res)) {
@@ -790,23 +790,23 @@ if (isset($_GET['band'])) {
             $Nombre = utf8_encode($aa['nombre']);
             $consecutivo = $aa['consecutivo'];
             $año = $aa['ann'];
-            $hora_entrada = date_format ($aa['hora_entrada'],'Y-m-d H:i:s');
-            $hora_salida = date_format($aa['hora_salida'],'Y-m-d H:i:s');
-            $horas = substr(date_format($aa['horas'],'Y-m-d H:i:s'),11,5);
+            $hora_entrada = date_format($aa['hora_entrada'], 'Y-m-d H:i:s');
+            $hora_salida = date_format($aa['hora_salida'], 'Y-m-d H:i:s');
+            $horas = substr(date_format($aa['horas'], 'Y-m-d H:i:s'), 11, 5);
             $dispositivo = utf8_encode($aa['dispositivo']);
             $tarde = utf8_encode($aa['tarde']);
-            $data.='<tr onclick=\'mostrar_detalle("'.$año.'","'.$consecutivo.'","'.$list_empresa.'","'.$id .'","'.$Nombre.'");\'>'; 
-            $tiquete=$año.'-'.$consecutivo;
-            $registro = array(   
+            $data .= '<tr onclick=\'mostrar_detalle("' . $año . '","' . $consecutivo . '","' . $list_empresa . '","' . $id . '","' . $Nombre . '");\'>';
+            $tiquete = $año . '-' . $consecutivo;
+            $registro = array(
                 'Nombre' => $Nombre,
-                'dispositivo'=> $dispositivo, 
-                'tiquete'=> $tiquete,                
+                'dispositivo' => $dispositivo,
+                'tiquete' => $tiquete,
                 'hora_entrada' => $hora_entrada,
-                'Actividad' => $hora_salida,                
-                'Horas' => $horas,                
+                'Actividad' => $hora_salida,
+                'Horas' => $horas,
             );
             foreach ($registro as $clave => $valor) {
-                if($tarde==0)
+                if ($tarde == 0)
                     $data .= '<td>' . (empty($valor) ? '' : htmlspecialchars($valor)) . '</td>';
                 else
                     $data .= '<td style="background-color:#f9e3a9;">' . (empty($valor) ? '' : htmlspecialchars($valor)) . '</td>';
@@ -823,10 +823,10 @@ if (isset($_GET['band'])) {
         $tiquete = $list_record['tiquete'];
         $cedula = $list_record['cedula'];
         $empresa = $list_record['empresa'];
-        $data='';
-        $sql1 ="SELECT * FROM biometrico.dbo.bitacora where consecutivo = $tiquete and año=$año order by date_time ";// AND MARCADO =0 
-        $res = sqlsrv_query($conn, utf8_decode($sql1));       
-        $data=' <div class="table-responsive">
+        $data = '';
+        $sql1 = "SELECT * FROM biometrico.dbo.bitacora where consecutivo = $tiquete and año=$año order by date_time "; // AND MARCADO =0 
+        $res = sqlsrv_query($conn, utf8_decode($sql1));
+        $data = ' <div class="table-responsive">
             <div id="div_tablaConsulta_biometrico">
             <table id="idTableConsulta_biometrico" class="table table-hover table-condensed table-bordered table-striped">
             <thead>
@@ -840,47 +840,48 @@ if (isset($_GET['band'])) {
             </thead>';
         $data .= '<tbody>';
         while ($aa = sqlsrv_fetch_array($res)) {
-          //  $consecutivo = $aa['consecutivo'];
-            $access_date = date_format($aa['access_date'],'Y-m-d');
-            $access_time = date_format($aa['access_time'],'H:i:s') ;
-            $DateTime = date_format($aa['date_time'],'Y-m-d H:i:s') ;
+            //  $consecutivo = $aa['consecutivo'];
+            $access_date = date_format($aa['access_date'], 'Y-m-d');
+            $access_time = date_format($aa['access_time'], 'H:i:s');
+            $DateTime = date_format($aa['date_time'], 'Y-m-d H:i:s');
             $Estado_real = strtoupper($aa['Estado_real']);
             $dispositivo = $aa['dispositivo'];
-            $data.'<tr>';
-            $registro = array('dispositivo' => $dispositivo, 
-                'access_date' => $access_date, 
-                'access_time' => $access_time, 
+            $data . '<tr>';
+            $registro = array(
+                'dispositivo' => $dispositivo,
+                'access_date' => $access_date,
+                'access_time' => $access_time,
                 'Estado_real' => $Estado_real,
             );
-          //  array_push($data, $registro);
+            //  array_push($data, $registro);
             foreach ($registro as $clave => $valor) {
-                    $data .= '<td>' . (empty($valor) ? '' : htmlspecialchars($valor)) . '</td>';
+                $data .= '<td>' . (empty($valor) ? '' : htmlspecialchars($valor)) . '</td>';
             }
-            if ($Estado_real=='PENDIENTE'){
-                $data .= '<td><center><button class="btn btn-success" onclick=\'Modificar_Turnos_asignado("'.$DateTime.'");\'><span class="glyphicon glyphicon-pencil"></span></button></center></td>';
+            if ($Estado_real == 'PENDIENTE') {
+                $data .= '<td><center><button class="btn btn-success" onclick=\'Modificar_Turnos_asignado("' . $DateTime . '");\'><span class="glyphicon glyphicon-pencil"></span></button></center></td>';
             }
             $data .= '</tr>';
             $json .= $data;
             $data = '';
         }
-        $sql_usuario ="SELECT idUsuario from UsuariosDetalle where Identificacion='$cedula'";
-        $res_user = sqlsrv_query($conn, $sql_usuario); 
+        $sql_usuario = "SELECT idUsuario from UsuariosDetalle where Identificacion='$cedula'";
+        $res_user = sqlsrv_query($conn, $sql_usuario);
         while ($au = sqlsrv_fetch_array($res_user)) {
             $id = $au['idUsuario'];
         }
-        $sql_turno ="SELECT  top(1)Descripcion FROM turnos_empleados inner join BitacoraTurnos on turnos_empleados.id_turno= BitacoraTurnos.idTurno and '$access_date' between FechaInicio and FechaFin 
+        $sql_turno = "SELECT  top(1)Descripcion FROM turnos_empleados inner join BitacoraTurnos on turnos_empleados.id_turno= BitacoraTurnos.idTurno and '$access_date' between FechaInicio and FechaFin 
             and idUsuario='$id'";
-        $res_user = sqlsrv_query($conn, $sql_turno,$params,$options); 
-        $filas= sqlsrv_num_rows($res_user);
-        if ($filas>0){
+        $res_user = sqlsrv_query($conn, $sql_turno, $params, $options);
+        $filas = sqlsrv_num_rows($res_user);
+        if ($filas > 0) {
             while ($aa = sqlsrv_fetch_array($res_user)) {
                 $descripcion = $aa['Descripcion'];
             }
-        }else
-            $descripcion='No tiene Turno Asignado';
+        } else
+            $descripcion = 'No tiene Turno Asignado';
 
-        $json .= '</tbody></table></div></div>'; 
-        $json=$json.'||'.$descripcion;
+        $json .= '</tbody></table></div></div>';
+        $json = $json . '||' . $descripcion;
     }
 
     if ($_GET['band'] == 'grabar_correccion') {
@@ -890,24 +891,24 @@ if (isset($_GET['band'])) {
         $turno = $list_record['turno'];
         $user_tiquete = $list_record['user_tiquete'];
         $usuario = $list_record['usuario'];
-        $datetime=$fecha_detalle.' '.$hora_detalle;
+        $datetime = $fecha_detalle . ' ' . $hora_detalle;
         $user = "SELECT NombreCompleto from UsuariosDetalle  WHERE idUsuario='$usuario'";
         $res = sqlsrv_query($conn, utf8_decode($user));
         while ($aa = sqlsrv_fetch_array($res)) {
-            $nombre=utf8_encode($aa['NombreCompleto']);
+            $nombre = utf8_encode($aa['NombreCompleto']);
         }
-       echo $sql="UPDATE biometrico.dbo.bitacora set access_date='$fecha_detalle', date_time='$datetime', access_time='$hora_detalle', Estado_real='$salida'  where date_time='$turno' AND Estado_real='Pendiente'";
+        echo $sql = "UPDATE biometrico.dbo.bitacora set access_date='$fecha_detalle', date_time='$datetime', access_time='$hora_detalle', Estado_real='$salida'  where date_time='$turno' AND Estado_real='Pendiente'";
         $res = sqlsrv_query($conn, utf8_decode($sql));
-        $sql="INSERT INTO logs (text) values('Se cambio la fecha=$fecha_detalle, Hora=$hora_detalle,  y Estado real= Salida, del tiquete=$user_tiquete  modificado por $nombre')";
+        $sql = "INSERT INTO logs (text) values('Se cambio la fecha=$fecha_detalle, Hora=$hora_detalle,  y Estado real= Salida, del tiquete=$user_tiquete  modificado por $nombre')";
         $res = sqlsrv_query($conn, utf8_decode($sql));
     }
 
     if ($_GET['band'] == 'obtener_tiquete') {
         $idUsuario = ENCR::descript($_GET['idUsuario']);
-        $sql1 ="SELECT Identificacion FROM TRAZ.DBO.UsuariosDetalle  WHERE  idUsuario ='$idUsuario'";
-        $res = sqlsrv_query($conn, $sql1);       
+        $sql1 = "SELECT Identificacion FROM TRAZ.DBO.UsuariosDetalle  WHERE  idUsuario ='$idUsuario'";
+        $res = sqlsrv_query($conn, $sql1);
         while ($aa = sqlsrv_fetch_array($res)) {
-            $Identificacion = $aa['Identificacion'];           
+            $Identificacion = $aa['Identificacion'];
         }
 
         $sql = "SELECT CONCAT(año,'-',consecutivo) AS consecutivo, CONCAT(año,'-',consecutivo) AS Nombre FROM biometrico.dbo.bitacora WHERE id =$Identificacion 
@@ -926,10 +927,10 @@ if (isset($_GET['band'])) {
     if ($_GET['band'] == 'buscar_horas') {
         $idTiquete = $list_record['idTiquete'];
         $usuario = ENCR::descript($list_record['usuario']);
-        $sql="SELECT traz.dbo.buscar_horas ('$idTiquete', '$usuario') AS tiempo";
+        $sql = "SELECT traz.dbo.buscar_horas ('$idTiquete', '$usuario') AS tiempo";
         $res = sqlsrv_query($conn, utf8_decode($sql));
         while ($aa = sqlsrv_fetch_array($res)) {
-            $tiempo = substr(date_format($aa['tiempo'],'Y-m-d H:i:s'),11,5); 
+            $tiempo = substr(date_format($aa['tiempo'], 'Y-m-d H:i:s'), 11, 5);
         }
         $json = $tiempo;
     }
@@ -937,145 +938,146 @@ if (isset($_GET['band'])) {
     if ($_GET['band'] == 'buscar_horas_pendientes') {
         $idTiquete = $list_record['idTiquete'];
         $usuario = ENCR::descript($list_record['usuario']);
-        $sql="SELECT traz.dbo.Buscar_horas_pendientes ('$idTiquete', '$usuario') AS tiempo";
+        $sql = "SELECT traz.dbo.Buscar_horas_pendientes ('$idTiquete', '$usuario') AS tiempo";
         $res = sqlsrv_query($conn, utf8_decode($sql));
         while ($aa = sqlsrv_fetch_array($res)) {
-            $tiempo = substr(date_format($aa['tiempo'],'Y-m-d H:i:s'),11,5); 
+            $tiempo = substr(date_format($aa['tiempo'], 'Y-m-d H:i:s'), 11, 5);
         }
         $json = $tiempo;
     }
 
     if ($_GET['band'] == 'buscar_detalle') {
+        $data = '';
         $tiquete = $list_record['tiquete'];
         $año = $list_record['año'];
         $usuario = ENCR::descript($list_record['usuario']);
-        $sql1 ="SELECT Identificacion FROM TRAZ.DBO.UsuariosDetalle  WHERE  idUsuario ='$usuario'";
+        $sql1 = "SELECT Identificacion FROM TRAZ.DBO.UsuariosDetalle  WHERE  idUsuario ='$usuario'";
         $res = sqlsrv_query($conn, $sql1);
 
         while ($aa = sqlsrv_fetch_array($res)) {
-            $Identificacion = $aa['Identificacion'];           
+            $Identificacion = $aa['Identificacion'];
         }
-        $sql="SELECT * FROM biometrico.dbo.bitacora WHERE id='$Identificacion' and consecutivo=$tiquete and año=$año order by date_time ";
-        $res = sqlsrv_query($conn, utf8_decode($sql),$params,$options);
+        $sql = "SELECT * FROM biometrico.dbo.bitacora WHERE id='$Identificacion' and consecutivo=$tiquete and año=$año order by date_time ";
+        $res = sqlsrv_query($conn, utf8_decode($sql), $params, $options);
         $row_permiso = sqlsrv_num_rows($res);
-        if($row_permiso>0){
-            $data.='<div class="table-responsive">
+        if ($row_permiso > 0) {
+            $data .= '<div class="table-responsive">
                     <div id="div_tabla_detalles">
                         <table id="idTabledetalle" class="table table-hover table-condensed table-bordered table-striped" width="80%">
                         <thead>
                         <tr>';
-            $data.= '<th class="text-center" data-column="entrada">Hora Entrada</th>
+            $data .= '<th class="text-center" data-column="entrada">Hora Entrada</th>
                     <th class="text-center" data-column="salida">Hora Salida</th>
                     <th class="text-center" data-column="hora">Total Horas</th>
                     <th class="text-center" data-column="dis">Dispositivo</th>
                     </tr></thead>
                     <tbody>
                 <tr>';
-           
-            $hora_parcial ='';
-            $bandera=0;
+
+            $hora_parcial = '';
+            $bandera = 0;
             while ($aa = sqlsrv_fetch_array($res)) {
                 $Estado_real = $aa['Estado_real'];
-                $Dispositivo = $aa['dispositivo']; 
-                $hora=date_format($aa['date_time'],"Y-m-d H:i:s");
-                if ($Estado_real=='Entrada'){
-                    $hora_parcial=$hora;
-                    $data.= '<td>'.$hora_parcial.'</td>';
+                $Dispositivo = $aa['dispositivo'];
+                $hora = date_format($aa['date_time'], "Y-m-d H:i:s");
+                if ($Estado_real == 'Entrada') {
+                    $hora_parcial = $hora;
+                    $data .= '<td>' . $hora_parcial . '</td>';
                     $bandera++;
-                }else if ($Estado_real=='Salida'){                
-                    $sqll="SELECT traz.dbo.calcular_hora ('$hora_parcial', '$hora') AS tiempo";
+                } else if ($Estado_real == 'Salida') {
+                    $sqll = "SELECT traz.dbo.calcular_hora ('$hora_parcial', '$hora') AS tiempo";
                     $ress = sqlsrv_query($conn, utf8_decode($sqll));
                     while ($ah = sqlsrv_fetch_array($ress)) {
-                        $tiempo = substr(date_format($ah['tiempo'],"Y-m-d H:i:s"),11,5);            
+                        $tiempo = substr(date_format($ah['tiempo'], "Y-m-d H:i:s"), 11, 5);
                     }
-                    $data.= '<td>'.$hora.'</td>';
-                    $data.= '<td>'.$tiempo.'</td>';
-                    $data.= '<td>'.$Dispositivo.'</td>';              
-                    if ($bandera<>$row_permiso)
-                        $data.= '<tr> ';
+                    $data .= '<td>' . $hora . '</td>';
+                    $data .= '<td>' . $tiempo . '</td>';
+                    $data .= '<td>' . $Dispositivo . '</td>';
+                    if ($bandera <> $row_permiso)
+                        $data .= '<tr> ';
                     $bandera++;
-                }else{
-                    $data.= '<td>1900-01-01</td>';
-                    $data.= '<td>0</td>';
-                    $data.= '<td>'.$Dispositivo.'</td>';
-                    $data.= '<td>No marco Salida</td> </tr>';
-                    if ($bandera<>$row_permiso)
-                        $data.= '<tr> ';
+                } else {
+                    $data .= '<td>1900-01-01</td>';
+                    $data .= '<td>0</td>';
+                    $data .= '<td>' . $Dispositivo . '</td>';
+                    $data .= '<td>No marco Salida</td> </tr>';
+                    if ($bandera <> $row_permiso)
+                        $data .= '<tr> ';
                     $bandera++;
-                }            
+                }
             }
-            $data.= '</tbody></table></div></div>';
+            $data .= '</tbody></table></div></div>';
         }
-        $json = $data; 
-    } 
+        $json = $data;
+    }
 
     if ($_GET['band'] == 'buscar_detalle_tiquete') {
         $idTiquete = $list_record['idTiquete'];
         $usuario = ENCR::descript($list_record['usuario']);
 
-        $sql1 ="SELECT d.Descripcion centro_trabajo, a.Descripcion actividad, u.Descripcion unidadNeg,
+        $sql1 = "SELECT d.Descripcion centro_trabajo, a.Descripcion actividad, u.Descripcion unidadNeg,
             fechafinal-fechainicial as tiempo
         FROM Jornada_Bitacora J 
         inner join Destino D on j.idCentroTrabajo = D.idDestino
         inner join Actividades A on j.idActividad=a.idActividad 
         inner join Jornada_Bitacora_UnidadNegocio U on j.idUnidadNegocio = U.idUnidadNegocio
         WHERE J.idUsuario='$usuario' and Tiquete_Registro='$idTiquete' order by Tiquete_Registro, j.FechaInicial";
-        $res = sqlsrv_query($conn, $sql1,$params,$options);
+        $res = sqlsrv_query($conn, $sql1, $params, $options);
         $row_permiso = sqlsrv_num_rows($res);
-        if($row_permiso>0){
-            $data='<div class="table-responsive">
+        if ($row_permiso > 0) {
+            $data = '<div class="table-responsive">
                     <div id="div_tabla_detalles">
                         <table id="idTabledetalle" class="table table-hover table-condensed table-bordered table-striped" width="80%">
                         <thead>
                         <tr>';
-            $data.= '<th class="text-center" data-column="centro">Centro Trabajo</th>
+            $data .= '<th class="text-center" data-column="centro">Centro Trabajo</th>
                     <th class="text-center" data-column="actividad">Actividad</th>
                     <th class="text-center" data-column="negocio">Negocio</th>
                     <th class="text-center" data-column="tiempo">Tiempo</th>
                     </tr></thead>
                     <tbody>';
-           
+
             while ($aa = sqlsrv_fetch_array($res)) {
                 $centro_trabajo = utf8_encode($aa['centro_trabajo']);
-                $actividad = utf8_encode($aa['actividad']); 
-                $unidadNeg = utf8_encode($aa['unidadNeg']); 
-                $tiempo=substr(date_format($aa['tiempo'],"Y-m-d H:i:s"),11,5);
-                $data.= '<tr><td>'.$centro_trabajo.'</td>';
-                $data.= '<td>'.$actividad.'</td>';
-                $data.= '<td>'.$unidadNeg.'</td>';              
-                $data.= '<td>'.$tiempo.'</td></tr>';               
+                $actividad = utf8_encode($aa['actividad']);
+                $unidadNeg = utf8_encode($aa['unidadNeg']);
+                $tiempo = substr(date_format($aa['tiempo'], "Y-m-d H:i:s"), 11, 5);
+                $data .= '<tr><td>' . $centro_trabajo . '</td>';
+                $data .= '<td>' . $actividad . '</td>';
+                $data .= '<td>' . $unidadNeg . '</td>';
+                $data .= '<td>' . $tiempo . '</td></tr>';
             }
-            $data.= '</tbody></table></div></div>';
-        }else
-            $data='';
-        $json = $data; 
-    } 
+            $data .= '</tbody></table></div></div>';
+        } else
+            $data = '';
+        $json = $data;
+    }
 
     if ($_GET['band'] == 'buscar_detalle_t') {
         $turno = $list_record['turno'];
         $op = $list_record['op'];
-        $count=0;
-        if ($op==1){
-            $sql="SELECT * from bitacora_horarios left join BitacoraTurnos on bitacora_horarios.id_turno = BitacoraTurnos.idturno 
+        $count = 0;
+        if ($op == 1) {
+            $sql = "SELECT * from bitacora_horarios left join BitacoraTurnos on bitacora_horarios.id_turno = BitacoraTurnos.idturno 
                 inner join turnos_empleados on bitacora_horarios.id_turno = turnos_empleados.id_turno where BitacoraTurnos.idxid is not null and idTurno='$turno'";
-            $res = sqlsrv_query($conn, $sql,$params, $options);
+            $res = sqlsrv_query($conn, $sql, $params, $options);
             $count = sqlsrv_num_rows($res);
-            if ($count>0)
-                $count=1;
+            if ($count > 0)
+                $count = 1;
         }
 
         $usuario = ENCR::descript($list_record['usuario']);
-        $sql1 ="SELECT * FROM bitacora_horarios inner join Actividades on Bitacora_horarios.idactividad = Actividades.idActividad  WHERE id_turno ='$turno' ORDER BY FechaRegistro";
-        $res = sqlsrv_query($conn, $sql1,$params, $options);
+        $sql1 = "SELECT * FROM bitacora_horarios inner join Actividades on Bitacora_horarios.idactividad = Actividades.idActividad  WHERE id_turno ='$turno' ORDER BY FechaRegistro";
+        $res = sqlsrv_query($conn, $sql1, $params, $options);
         $row_permiso = sqlsrv_num_rows($res);
-        $data='';
-        if($row_permiso>0){
-            $data.='<div class="table-responsive">
+        $data = '';
+        if ($row_permiso > 0) {
+            $data .= '<div class="table-responsive">
                     <div id="div_tabla_detalle">
                         <table id="idTabledetalle_detalle" class="table table-hover table-condensed table-bordered table-striped" width="80%">
                         <thead>
                         <tr>';
-            $data.= '<th class="text-center" data-column="hora">Turno</th>
+            $data .= '<th class="text-center" data-column="hora">Turno</th>
                         <th class="text-center" data-column="entrada">Hora Entrada</th>
                         <th class="text-center" data-column="salida">Hora Salida</th>
                     </tr></thead>
@@ -1083,22 +1085,22 @@ if (isset($_GET['band'])) {
                 <tr>';
             while ($aa = sqlsrv_fetch_array($res)) {
                 $descripcion = utf8_encode($aa['Descripcion']);
-                $hora_inicio = date_format($aa['hora_inicio'],'H:i:s');
-                $hora_fin = date_format($aa['hora_fin'],'H:i:s'); 
-                $data.= '<td>'.$descripcion.'</td>';
-                $data.= '<td>'.$hora_inicio.'</td>';
-                $data.= '<td>'.$hora_fin.'</td>
-                    </tr>';                            
+                $hora_inicio = date_format($aa['hora_inicio'], 'H:i:s');
+                $hora_fin = date_format($aa['hora_fin'], 'H:i:s');
+                $data .= '<td>' . $descripcion . '</td>';
+                $data .= '<td>' . $hora_inicio . '</td>';
+                $data .= '<td>' . $hora_fin . '</td>
+                    </tr>';
             }
-            $data.= '</tbody></table></div></div>';
+            $data .= '</tbody></table></div></div>';
         }
-        $json = $data.'||'.$count;
-    } 
+        $json = $data . '||' . $count;
+    }
 
     if ($_GET['band'] == 'get_turnos_user_activo') {
-      //  $turno = $list_record['texto_Usuario'];
+        //  $turno = $list_record['texto_Usuario'];
         $usuario = ENCR::descript($list_record['usuario']);
-        $sql ="SELECT BitacoraTurnos.idxid,BitacoraTurnos.idusuario, Bitacora_horarios.id_turno,turnos_empleados.descripcion,FechaInicio, FechaFin, dias, destino.Descripcion as centro from bitacora_horarios 
+        $sql = "SELECT BitacoraTurnos.idxid,BitacoraTurnos.idusuario, Bitacora_horarios.id_turno,turnos_empleados.descripcion,FechaInicio, FechaFin, dias, destino.Descripcion as centro from bitacora_horarios 
             inner join turnos_empleados on bitacora_horarios.id_turno = turnos_empleados.id_turno 
             inner join UsuariosDetalle on bitacora_horarios.idUsuario = UsuariosDetalle.idUsuario
             inner join BitacoraTurnos on Bitacora_horarios.id_turno = BitacoraTurnos.idTurno
@@ -1107,14 +1109,14 @@ if (isset($_GET['band'])) {
                 and (FechaFin>=cast(GETDATE() as date) or FechaFin='1900-01-01')";
         $res = sqlsrv_query($conn, $sql, $params, $options);
         $row_permiso = sqlsrv_num_rows($res);
-        $data='';
-        if($row_permiso>0){
-            $data.='<div class="table-responsive">
+        $data = '';
+        if ($row_permiso > 0) {
+            $data .= '<div class="table-responsive">
                     <div id="div_tabla_detalle">
                         <table id="idTabledetalle" class="table table-hover table-condensed table-bordered table-striped" width="80%">
                         <thead>
                         <tr>';
-            $data.= '<th data-column="centro">Centro Trabajo</th>
+            $data .= '<th data-column="centro">Centro Trabajo</th>
                     <th data-column="hora">Turno</th>
                     <th data-column="fi">Fecha Inicio</th>
                     <th data-column="ff">Fecha Fin</th>
@@ -1122,60 +1124,60 @@ if (isset($_GET['band'])) {
                     <th class="text-center" data-column="salida">opcion</th>
                 </tr></thead>
                 <tbody>';
-            $id='';
-            $idxid_temp='';
-            $dias_semana='';
-            $nombre_tem='';
-            $destino_tem='';
-            $fechaI_tem='';
-            $fechaF_tem='';
+            $id = '';
+            $idxid_temp = '';
+            $dias_semana = '';
+            $nombre_tem = '';
+            $destino_tem = '';
+            $fechaI_tem = '';
+            $fechaF_tem = '';
             while ($aa = sqlsrv_fetch_array($res)) {
                 $id_turno = $aa['id_turno'];
                 $idxid = $aa['idxid'];
                 $nombre = utf8_encode($aa['descripcion']);
                 $centro = utf8_encode($aa['centro']);
-                $FechaInicio = date_format($aa['FechaInicio'],'Y-m-d');
-                $FechaFin = date_format($aa['FechaFin'],'Y-m-d');                
+                $FechaInicio = date_format($aa['FechaInicio'], 'Y-m-d');
+                $FechaFin = date_format($aa['FechaFin'], 'Y-m-d');
                 $dias = utf8_encode($aa['dias']);
-                if($id==''){                    
-                    $nombre_tem=$nombre;
-                    $destino_tem=$centro;
-                    $fechaI_tem=$FechaInicio;
-                    $fechaF_tem=$FechaFin;
-                    $dias_semana=$dias;
-                    $id=$id_turno;
-                    $idxid_temp=$idxid;
-                }elseif(($id==$id_turno) && ($fechaI_tem ==$FechaInicio) && ($fechaF_tem==$FechaFin)){
-                     $dias_semana=$dias_semana.', '.$dias;
-                     $idxid_temp.=','.$idxid;
-                }else{
-                    $data.= ' <tr><td>'.$destino_tem.'</td>';
-                    $data.= '<td>'.$nombre_tem.'</td>';
-                    $data.= '<td>'.$fechaI_tem.'</td>';
-                    $data.= '<td>'.$fechaF_tem.'</td>';
-                    $data.= '<td>'.$dias_semana.'</td>'; 
-                    $data.= '<td><center><button class="btn btn-danger" onclick="delete_Turnos_asignado("'.$idxid_temp.'");"><span class="glyphicon glyphicon-trash"></span></button></center></td>';
-                    $data.= '</tr>';
-                    $nombre_tem=$nombre;
-                    $destino_tem=$centro;
-                    $dias_semana=$dias;
-                    $fechaI_tem=$FechaInicio;
-                    $fechaF_tem=$FechaFin;
-                    $id=$id_turno;
-                    $idxid_temp=$idxid;
-                }                                           
+                if ($id == '') {
+                    $nombre_tem = $nombre;
+                    $destino_tem = $centro;
+                    $fechaI_tem = $FechaInicio;
+                    $fechaF_tem = $FechaFin;
+                    $dias_semana = $dias;
+                    $id = $id_turno;
+                    $idxid_temp = $idxid;
+                } elseif (($id == $id_turno) && ($fechaI_tem == $FechaInicio) && ($fechaF_tem == $FechaFin)) {
+                    $dias_semana = $dias_semana . ', ' . $dias;
+                    $idxid_temp .= ',' . $idxid;
+                } else {
+                    $data .= ' <tr><td>' . $destino_tem . '</td>';
+                    $data .= '<td>' . $nombre_tem . '</td>';
+                    $data .= '<td>' . $fechaI_tem . '</td>';
+                    $data .= '<td>' . $fechaF_tem . '</td>';
+                    $data .= '<td>' . $dias_semana . '</td>';
+                    $data .= '<td><center><button class="btn btn-danger" onclick="delete_Turnos_asignado("' . $idxid_temp . '");"><span class="glyphicon glyphicon-trash"></span></button></center></td>';
+                    $data .= '</tr>';
+                    $nombre_tem = $nombre;
+                    $destino_tem = $centro;
+                    $dias_semana = $dias;
+                    $fechaI_tem = $FechaInicio;
+                    $fechaF_tem = $FechaFin;
+                    $id = $id_turno;
+                    $idxid_temp = $idxid;
+                }
             }
-            $data.= '<td>'.$destino_tem.'</td>';
-            $data.= '<td>'.$nombre_tem.'</td>';
-            $data.= '<td>'.$fechaI_tem.'</td>';
-            $data.= '<td>'.$fechaF_tem.'</td>';
-            $data.= '<td>'.$dias_semana.'</td>';
-            $data.= '<td><center><button class="btn btn-danger" onclick="delete_Turnos_asignado(\''.$idxid_temp.'\');"><span class="glyphicon glyphicon-trash"></span></button></center></td>
-                        </tr>'; 
-            $data.= '</tbody></table></div></div>';
+            $data .= '<td>' . $destino_tem . '</td>';
+            $data .= '<td>' . $nombre_tem . '</td>';
+            $data .= '<td>' . $fechaI_tem . '</td>';
+            $data .= '<td>' . $fechaF_tem . '</td>';
+            $data .= '<td>' . $dias_semana . '</td>';
+            $data .= '<td><center><button class="btn btn-danger" onclick="delete_Turnos_asignado(\'' . $idxid_temp . '\');"><span class="glyphicon glyphicon-trash"></span></button></center></td>
+                        </tr>';
+            $data .= '</tbody></table></div></div>';
         }
         $json = $data;
-    } 
+    }
 
     if ($_GET['band'] == 'delete_Turnos_asignado') {
         $id = $list_record['id'];
@@ -1186,7 +1188,7 @@ if (isset($_GET['band'])) {
         $res = sqlsrv_query($conn, $sql);
         $json = '';
         if ($res)
-           $json = 1;
+            $json = 1;
     }
 
     if ($_GET['band'] == 'buscar_asignados') {
@@ -1194,7 +1196,7 @@ if (isset($_GET['band'])) {
         $texto = $list_record['texto'];
         $usuario = ENCR::descript($list_record['usuario']);
         $hoy = date('Y-m-d');
-        $sql ="SELECT BitacoraTurnos.idusuario, UsuariosDetalle.NombreCompleto,turnos_empleados.descripcion,FechaInicio, FechaFin, dias, destino.Descripcion as centro  
+        $sql = "SELECT BitacoraTurnos.idusuario, UsuariosDetalle.NombreCompleto,turnos_empleados.descripcion,FechaInicio, FechaFin, dias, destino.Descripcion as centro  
             FROM bitacora_horarios
             inner join turnos_empleados on bitacora_horarios.id_turno = turnos_empleados.id_turno 
             inner join BitacoraTurnos on Bitacora_horarios.id_turno = BitacoraTurnos.idTurno
@@ -1204,14 +1206,14 @@ if (isset($_GET['band'])) {
                 and (fechafin>='$hoy' or FechaFin='1900-01-01') order by NombreCompleto, FechaInicio";
         $res = sqlsrv_query($conn, $sql, $params, $options);
         $row_permiso = sqlsrv_num_rows($res);
-        $data='';
-        if($row_permiso>0){
-            $data.='<div class="table-responsive">
-                    <div id="div_tabla_detalle"><h2> Detalle Empleados  '.$texto.'</h2> 
+        $data = '';
+        if ($row_permiso > 0) {
+            $data .= '<div class="table-responsive">
+                    <div id="div_tabla_detalle"><h2> Detalle Empleados  ' . $texto . '</h2> 
                         <table id="idTabledetalle_asignados" class="table table-hover table-condensed table-bordered table-striped" width="80%">
                         <thead>
                         <tr>';
-            $data.= '   <th data-column="hora">Nombre Empleado</th>
+            $data .= '   <th data-column="hora">Nombre Empleado</th>
                         <th class="text-center" data-column="centro">Centro Trabajo</th>
                         <th class="text-center" data-column="inicio">Fecha inicio</th>
                         <th class="text-center" data-column="salida">Fecha Fin</th>
@@ -1219,68 +1221,68 @@ if (isset($_GET['band'])) {
                     </tr></thead>
                     <tbody>
                 <tr>';
-            $id='';
-            $dias_semana='';
-            $nombre_tem='';
-            $centro_tem='';
-            $fechai_tem='';
-            $fechaf_tem='';
+            $id = '';
+            $dias_semana = '';
+            $nombre_tem = '';
+            $centro_tem = '';
+            $fechai_tem = '';
+            $fechaf_tem = '';
             while ($aa = sqlsrv_fetch_array($res)) {
                 $idusuario = $aa['idusuario'];
                 $nombre = utf8_encode($aa['NombreCompleto']);
                 $centro = utf8_encode($aa['centro']);
                 $dias = utf8_encode($aa['dias']);
-                $hora_inicio = date_format($aa['FechaInicio'],'Y-m-d');
-                $hora_fin = date_format($aa['FechaFin'],'Y-m-d'); 
-                if($id==''){                    
-                    $nombre_tem=$nombre;
-                    $centro_tem=$centro;
-                    $fechai_tem=$hora_inicio;
-                    $fechaf_tem=$hora_fin;
-                    $dias_semana=$dias;
-                    $id=$idusuario;
-                }elseif($id==$idusuario){
-                    if($fechai_tem==$hora_inicio)
-                        $dias_semana=$dias_semana.', '.$dias;
-                    else{
-                        $data.= '<td>'.$nombre_tem.'</td>';
-                        $data.= '<td>'.$centro_tem.'</td>';
-                        $data.= '<td>'.$fechai_tem.'</td>';
-                        $data.= '<td>'.$fechaf_tem.'</td>
-                                 <td>'.$dias_semana.'</td>
-                            </tr>'; 
-                        $nombre_tem=$nombre;
-                        $centro_tem=$centro;
-                        $fechai_tem=$hora_inicio;
-                        $fechaf_tem=$hora_fin;
-                        $dias_semana=$dias;
-                        $id=$idusuario;
-                    }                           
-                }else{
-                    $data.= '<td>'.$nombre_tem.'</td>';
-                    $data.= '<td>'.$centro_tem.'</td>';
-                    $data.= '<td>'.$fechai_tem.'</td>';
-                    $data.= '<td>'.$fechaf_tem.'</td>
-                             <td>'.$dias_semana.'</td>
-                        </tr>'; 
-                    $nombre_tem=$nombre;
-                    $centro_tem=$centro;
-                    $fechai_tem=$hora_inicio;
-                    $fechaf_tem=$hora_fin;
-                    $dias_semana=$dias;
-                    $id=$idusuario;
-                }                                                 
+                $hora_inicio = date_format($aa['FechaInicio'], 'Y-m-d');
+                $hora_fin = date_format($aa['FechaFin'], 'Y-m-d');
+                if ($id == '') {
+                    $nombre_tem = $nombre;
+                    $centro_tem = $centro;
+                    $fechai_tem = $hora_inicio;
+                    $fechaf_tem = $hora_fin;
+                    $dias_semana = $dias;
+                    $id = $idusuario;
+                } elseif ($id == $idusuario) {
+                    if ($fechai_tem == $hora_inicio)
+                        $dias_semana = $dias_semana . ', ' . $dias;
+                    else {
+                        $data .= '<td>' . $nombre_tem . '</td>';
+                        $data .= '<td>' . $centro_tem . '</td>';
+                        $data .= '<td>' . $fechai_tem . '</td>';
+                        $data .= '<td>' . $fechaf_tem . '</td>
+                                 <td>' . $dias_semana . '</td>
+                            </tr>';
+                        $nombre_tem = $nombre;
+                        $centro_tem = $centro;
+                        $fechai_tem = $hora_inicio;
+                        $fechaf_tem = $hora_fin;
+                        $dias_semana = $dias;
+                        $id = $idusuario;
+                    }
+                } else {
+                    $data .= '<td>' . $nombre_tem . '</td>';
+                    $data .= '<td>' . $centro_tem . '</td>';
+                    $data .= '<td>' . $fechai_tem . '</td>';
+                    $data .= '<td>' . $fechaf_tem . '</td>
+                             <td>' . $dias_semana . '</td>
+                        </tr>';
+                    $nombre_tem = $nombre;
+                    $centro_tem = $centro;
+                    $fechai_tem = $hora_inicio;
+                    $fechaf_tem = $hora_fin;
+                    $dias_semana = $dias;
+                    $id = $idusuario;
+                }
             }
-            $data.= '<td>'.$nombre_tem.'</td>';
-                    $data.= '<td>'.$centro_tem.'</td>';
-                    $data.= '<td>'.$fechai_tem.'</td>';
-                    $data.= '<td>'.$fechaf_tem.'</td>
-                             <td>'.$dias_semana.'</td>
-                        </tr>'; 
-            $data.= '</tbody></table></div></div>';
+            $data .= '<td>' . $nombre_tem . '</td>';
+            $data .= '<td>' . $centro_tem . '</td>';
+            $data .= '<td>' . $fechai_tem . '</td>';
+            $data .= '<td>' . $fechaf_tem . '</td>
+                             <td>' . $dias_semana . '</td>
+                        </tr>';
+            $data .= '</tbody></table></div></div>';
         }
         $json = $data;
-    } 
+    }
 
     if ($_GET['band'] == 'get_horasExtras') {
         $FechaInicial = $list_record['FechaInicial'];
@@ -1342,7 +1344,7 @@ if (isset($_GET['band'])) {
             // $Costo_actividad= utf8_encode($aa['Costo_actividad']);
             $Sueldo = number_format($aa['Sueldo'], 2);
             $horas_extras = number_format($aa['horas_extras'], 2);
-            $Fecha = date_format($aa['fecha'],'Y-m-d');
+            $Fecha = date_format($aa['fecha'], 'Y-m-d');
 
             $registro = array(
                 'Identificacion' => $Identificacion,
@@ -1363,7 +1365,6 @@ if (isset($_GET['band'])) {
             $data = '';
         }
         $json .= '</tbody></table></div></div>';
-
     } elseif ($_GET['band'] == 'get_usuario') {
         $idusuario = $list_record['usuario'];
         $sql = "SELECT NombreUsuarioLargo from Usuarios where idUsuario = '$idusuario' and habilitado=1 ";
@@ -1375,44 +1376,45 @@ if (isset($_GET['band'])) {
     }
 
     if ($_GET['band'] == 'get_crear_turno') {
-        $FechaInicial_turno =$list_record['FechaInicial_turno'];
+        $FechaInicial_turno = $list_record['FechaInicial_turno'];
         $FechaFinal_turno = $list_record['FechaFinal_turno'];
         $lista_turnos = $list_record['lista_turnos'];
         $lista_actividades = $list_record['lista_actividades'];
         $idusuario = $list_record['idusuario'];
         /////////  falta el usuario conectado///////////////////////////////////////////
-        $bandera=0;
+        $bandera = 0;
         if ($lista_turnos == '1') {
-            $sqlid ='SELECT Newid() as id';
+            $sqlid = 'SELECT Newid() as id';
             $res2 = sqlsrv_query($conn, $sqlid);
             while ($aa = sqlsrv_fetch_array($res2)) {
                 $lista_turnos = $aa['id'];
             }
-        }else{
-            $sql ="SELECT * FROM bitacora_horarios where id_turno ='$lista_turnos' order by fecharegistro";
+        } else {
+            $sql = "SELECT * FROM bitacora_horarios where id_turno ='$lista_turnos' order by fecharegistro";
             $res = sqlsrv_query($conn, $sql);
             while ($aa = sqlsrv_fetch_array($res)) {
-                $hora_inicio = date_format($aa['hora_inicio'],'H:i:s');
-                $hora_fin = date_format($aa['hora_fin'],'H:i:s');
+                $hora_inicio = date_format($aa['hora_inicio'], 'H:i:s');
+                $hora_fin = date_format($aa['hora_fin'], 'H:i:s');
                 $idActividad = $aa['idactividad'];
-                if($idActividad=='47C297B3-411E-445E-8357-797687831DC2'){
-                    if($FechaInicial_turno<$hora_inicio or $FechaFinal_turno>$hora_fin)
-                        $bandera=1;
-                }else{
-                    if(($FechaInicial_turno>$hora_inicio and $FechaInicial_turno<$hora_fin) or ($FechaFinal_turno>$hora_inicio and $FechaFinal_turno<$hora_fin) or 
-                        ($FechaInicial_turno<$hora_inicio and $FechaFinal_turno>$hora_fin)){
-                        $bandera=1;
+                if ($idActividad == '47C297B3-411E-445E-8357-797687831DC2') {
+                    if ($FechaInicial_turno < $hora_inicio or $FechaFinal_turno > $hora_fin)
+                        $bandera = 1;
+                } else {
+                    if (($FechaInicial_turno > $hora_inicio and $FechaInicial_turno < $hora_fin) or ($FechaFinal_turno > $hora_inicio and $FechaFinal_turno < $hora_fin) or
+                        ($FechaInicial_turno < $hora_inicio and $FechaFinal_turno > $hora_fin)
+                    ) {
+                        $bandera = 1;
                     }
                 }
             }
         }
 
-        if($bandera==0){
+        if ($bandera == 0) {
             $sql = "EXECUTE SAVE_bitacora_crear_turnos @idturno='$lista_turnos', @fecha_ini='$FechaInicial_turno', @fecha_fin='$FechaFinal_turno', @idactividad='$lista_actividades', @idusuario='$idusuario'";
             $res = sqlsrv_query($conn, $sql);
-            if($res){
-                $sql1="SELECT turnos_empleados.id_turno, descripcion from turnos_empleados  where id_turno ='$lista_turnos'";
-                $res = sqlsrv_query($conn, $sql1); 
+            if ($res) {
+                $sql1 = "SELECT turnos_empleados.id_turno, descripcion from turnos_empleados  where id_turno ='$lista_turnos'";
+                $res = sqlsrv_query($conn, $sql1);
                 $data = [];
                 while ($aa = sqlsrv_fetch_array($res)) {
                     $consecutivo = $aa['id_turno'];
@@ -1420,35 +1422,35 @@ if (isset($_GET['band'])) {
                     $registro = array('id' => $consecutivo, 'name' => $Nombre);
                     array_push($data, $registro);
                 }
-            } 
+            }
             $json = (json_encode($data));
-        }else
-            $json= $bandera;        
+        } else
+            $json = $bandera;
     }
 
     if ($_GET['band'] == 'get_asignar_turno') {
-        $FechaInicial_turno =$list_record['FechaInicial_turno'];
+        $FechaInicial_turno = $list_record['FechaInicial_turno'];
         $FechaFinal_turno = $list_record['FechaFinal_turno'];
         $lista_turnos = $list_record['lista_turnos'];
         $dias_laborales = $list_record['dias_laborales'];
         $usuario = ENCR::descript($list_record['usuario']);
         $id_usuario_login = $list_record['id_usuario'];
         $idcentroTrabajo = ENCR::descript($list_record['idcentroTrabajo']);
-        $bandera=0;
+        $bandera = 0;
         $array_dias = array();
-        $cont= count($list_record["dias_laborales"]);
-        for ($i=0; $i <$cont ; $i++) {
-            $array_dias[$i] =$list_record["dias_laborales"][$i]; 
+        $cont = count($list_record["dias_laborales"]);
+        for ($i = 0; $i < $cont; $i++) {
+            $array_dias[$i] = $list_record["dias_laborales"][$i];
         }
-        $dias_laborales= implode(",", $array_dias);
+        $dias_laborales = implode(",", $array_dias);
         if ($FechaFinal_turno == '') {
-            $FechaFinal_turno='1900-01-01';    
+            $FechaFinal_turno = '1900-01-01';
         }
 
         $sql = "EXECUTE SAVE_bitacora_asignar_turnos @idturno='$lista_turnos', @fecha_ini='$FechaInicial_turno', @fecha_fin='$FechaFinal_turno', 
             @dias='$dias_laborales', @iduser_login='$id_usuario_login', @idusuario='$usuario' ,@centrotrabajo='$idcentroTrabajo'";
         $res = sqlsrv_query($conn, utf8_decode($sql));
-          /*  if($res){
+        /*  if($res){
                 $sql1="SELECT turnos_empleados.id_turno, descripcion from turnos_empleados  where id_turno ='$lista_turnos'";
                 $res = sqlsrv_query($conn, $sql1);
                 $data = [];
@@ -1461,7 +1463,7 @@ if (isset($_GET['band'])) {
             }
             $json = (json_encode($data));*
         }else  */
-            $json= $sql;      
+        $json = $sql;
     }
 
     if ($_GET['band'] == 'save_Turnos') {
@@ -1514,7 +1516,6 @@ if (isset($_GET['band'])) {
         $Sql = "UPDATE Jornada_Bitacora_Detalle SET FechaInicial = '$FechaInicialFormatted', FechaFinal = '$FechaFinalFormatted', idRegla ='$idRegla' ,Valor='$Valor'
             where idxid ='$idxid'";
         $res = sqlsrv_query($conn, $Sql);
-
     }
 
     if ($_GET['band'] == 'obtener_Regla') {
@@ -1584,8 +1585,8 @@ if (isset($_GET['band'])) {
     }
 
     if ($_GET['band'] == 'delete_Turnos') {
-         $idxid = ENCR::descript($list_record['idxid']);
-         $sql = "EXEC DELETE_Bitacora_Turno @idxid='{$idxid}'";
+        $idxid = ENCR::descript($list_record['idxid']);
+        $sql = "EXEC DELETE_Bitacora_Turno @idxid='{$idxid}'";
         $res = sqlsrv_query($conn, $sql);
         if ($res)
             $json = 1;
@@ -1663,7 +1664,6 @@ if (isset($_GET['band'])) {
             if ($aa['FechaFinal'] != '') {
                 // $FechaFin = date_format($aa['FechaFinal'],'Y-m-d ');
                 $FechaFin = date_format($aa['FechaFinal'], 'Y-m-d H:i:s');
-
             }
 
             $Regla = utf8_encode($aa['Regla']);
@@ -1693,7 +1693,6 @@ if (isset($_GET['band'])) {
 
                 $prevTiquete = $Tiquete;
                 $contadorFila = 0;
-
             }
 
 
@@ -1737,12 +1736,11 @@ if (isset($_GET['band'])) {
 
             $json .= $data;
             $data = '';
-
         }
 
         $json .= '</tbody></table></div></div>';
     }
-    
+
     if ($_GET['band'] == 'dias') {
         $diasEnEspanol = array(
             'Monday'    => 'lunes',
@@ -1759,16 +1757,16 @@ if (isset($_GET['band'])) {
 
         $fechaI = new DateTime($fechaInicio);
         $fechaF = new DateTime($fechaFin);
-        if ($fechaFin==''){
+        if ($fechaFin == '') {
             $fecha = new DateTime($fechaInicio);
             $intervalo = new DateInterval('P10D');
             $fecha->add($intervalo);
-            $fechaF=$fecha;
+            $fechaF = $fecha;
         }
-            
+
         // Convertir las fechas a objetos DateTime
-       
-        
+
+
 
         // Crear un array para almacenar los nombres de los días únicos
         $nombresDias = array();
