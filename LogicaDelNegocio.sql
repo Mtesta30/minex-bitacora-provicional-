@@ -1,4 +1,6 @@
+/* -------------------------------------------------- */
 /* Tabla Usuarios biometrico */
+/* -------------------------------------------------- */
 CREATE TABLE [dbo].[UsuariosBiometrico]
 (
     [idUsuario] [UNIQUEIDENTIFIER] NOT NULL,
@@ -83,176 +85,6 @@ GO
 
 
 /* -------------------------------------------------- */
-/* Procedimientos */
-/* -------------------------------------------------- */
-
--- Procedimiento para validar usuarios
-CREATE PROCEDURE [dbo].[ValidarUsuarioBiometrico]
-    @identificacion VARCHAR(15),
-    @nombreCompleto VARCHAR(100)
-AS
-BEGIN
-    DECLARE @idUsuario UNIQUEIDENTIFIER;
-
-    -- Verificar si existe en cualquiera de las tablas
-    SELECT TOP 1
-        @idUsuario = idUsuario
-    FROM [dbo].[vUsuariosAppBiometrico]
-    WHERE Identificacion = @identificacion;
-
-    -- Si no existe, crearlo en UsuariosBiometrico
-    IF @idUsuario IS NULL
-    BEGIN
-        SET @idUsuario = NEWID();
-
-        INSERT INTO [dbo].[UsuariosBiometrico]
-            (idUsuario, Identificacion, NombreCompleto)
-        VALUES
-            (@idUsuario, @identificacion, @nombreCompleto);
-    END
-
-    RETURN 0;
--- Éxito
-END;
-GO
-
--- Procedimiento para validar dispositivos biométricos
-CREATE PROCEDURE [dbo].[ValidarBiometrico]
-    @identificadorBiometrico VARCHAR(50),
-    @idBiometrico UNIQUEIDENTIFIER OUTPUT
-AS
-BEGIN
-    -- Intentar obtener el ID del biométrico
-    SELECT @idBiometrico = idBiometrico
-    FROM [dbo].[Biometricos]
-    WHERE identificadorBiometrico = @identificadorBiometrico;
-
-    -- Si no existe, asignar el ID genérico
-    IF @idBiometrico IS NULL
-    BEGIN
-        SET @idBiometrico = '00000000-0000-0000-0000-000000000001';
-
-        -- Registrar en log
-        INSERT INTO [dbo].[Logs]
-        VALUES
-            ('BiometricoNoRegistrado', @identificadorBiometrico, GETDATE());
-    END
-
-    RETURN 0;
-END;
-
-/* -------------------------------------------------- */
-/* -------------------------------------------------- */
-/* -------------------------------------------------- */
-
-/* 
-CREATE PROCEDURE [dbo].[ProcesarMarcacionBiometrica]
-    @identificacion VARCHAR(15),
-    @fechaHora DATETIME,
-    @idBiometrico UNIQUEIDENTIFIER,
-    @tipoMarcacion VARCHAR(20) OUTPUT
-AS
-BEGIN
-    DECLARE @fechaActual DATE = CAST(@fechaHora AS DATE)
-    DECLARE @fechaHoraActual TIME = CAST(@fechaHora AS TIME)
-    DECLARE @idUsuario UNIQUEIDENTIFIER
-
-    -- Obtener idUsuario
-    SELECT @idUsuario = idUsuario
-    FROM [dbo].[vUsuariosAppBiometrico]
-    WHERE Identificacion = @identificacion
-
-    -- Para una nueva marcación:
-    IF EXISTS (SELECT 1
-    FROM Bitacora
-    WHERE Identificacion = @identificacion
-        AND CAST(FechaHora AS DATE) = @fechaActual)
-    BEGIN
-        -- Ya hay marcaciones previas ese día
-        DECLARE @ultimaMarcacion DATETIME
-        DECLARE @tipoUltimaMarcacion VARCHAR(20)
-
-        SELECT TOP 1
-            @ultimaMarcacion = FechaHora, @tipoUltimaMarcacion = tipoMarcacion
-        FROM Bitacora
-        WHERE Identificacion = @identificacion
-            AND CAST(FechaHora AS DATE) = @fechaActual
-        ORDER BY FechaHora DESC
-
-        -- Si pasaron al menos 30 minutos desde la última marcación
-        IF DATEDIFF(MINUTE, @ultimaMarcacion, @fechaHoraActual) >= 30
-        BEGIN
-            -- Si la última fue entrada, esta es salida y viceversa
-            SET @tipoMarcacion = CASE WHEN @tipoUltimaMarcacion = 'Entrada' THEN 'Salida' ELSE 'Entrada' END
-        END
-        ELSE
-        BEGIN
-            -- Marcación muy cercana a la anterior, posible error o paso casual
-            SET @tipoMarcacion = 'Indeterminado'
-        -- Opcionalmente, registrar en log de errores para revisión manual
-        END
-    END
-    ELSE
-    BEGIN
-        -- Primera marcación del día
-        DECLARE @horaInicioTurno TIME
-
-        -- Obtener horario programado
-        SELECT @horaInicioTurno = T.horaInicio
-        FROM ProgramacionTurnosDetalle PD
-            INNER JOIN ProgramacionTurnos P ON PD.idProgramacion = P.idProgramacion
-            INNER JOIN Turnos T ON PD.idTurno = T.idTurno
-        WHERE P.idUsuario = @idUsuario
-            AND PD.fecha = @fechaActual
-
-        -- Si está cerca del inicio de turno (± 2 horas) es entrada, si no podría ser salida de turno anterior
-        IF ABS(DATEDIFF(MINUTE, @horaInicioTurno, @fechaHoraActual)) <= 120
-        BEGIN
-            SET @tipoMarcacion = 'Entrada'
-        END
-        ELSE
-        BEGIN
-            -- Marcación lejos del inicio de turno, posible salida o error
-            SET @tipoMarcacion = 'Verificar'
-        -- Marcar para revisión manual
-        END
-    END
-END;
- */
-
-/* -------------------------------------------------- */
-/* -------------------------------------------------- */
-/* -------------------------------------------------- */
-/* 
-CREATE PROCEDURE [dbo].[AsociarMarcacionConTurno]
-    @Identificacion VARCHAR(15),
-    @FechaHora DATETIME,
-    @idProgramacionDetalle UNIQUEIDENTIFIER OUTPUT,
-    @idTurno UNIQUEIDENTIFIER OUTPUT
-AS
-BEGIN
-    DECLARE @idUsuario UNIQUEIDENTIFIER;
-    DECLARE @FechaMarcacion DATE = CAST(@FechaHora AS DATE);
-
--- 1. Obtener el idUsuario a partir de la identificación usando la vista
-SELECT @idUsuario = idUsuario
-FROM [dbo].[vUsuariosAppBiometrico]
-WHERE Identificacion = @Identificacion;
-
-    -- 2. Buscar la programación activa para esa fecha
-    SELECT @idProgramacionDetalle = PD.idProgramacionDetalle,
-        @idTurno = PD.idTurno
-    FROM [dbo].[ProgramacionTurnos] PT
-        INNER JOIN [dbo].[ProgramacionTurnosDetalle] PD
-        ON PT.idProgramacion = PD.idProgramacion
-    WHERE PT.idUsuario = @idUsuario
-        AND PD.fecha = @FechaMarcacion
-        AND PT.activo = 1
-        AND PT.fechaInicio <= @FechaMarcacion
-        AND PT.fechaFin >= @FechaMarcacion;
-END; */
-
-/* -------------------------------------------------- */
 /* Tabla Bitácora */
 /* -------------------------------------------------- */
 CREATE TABLE [dbo].[Bitacora]
@@ -265,6 +97,7 @@ CREATE TABLE [dbo].[Bitacora]
     [tipoMarcacion] [VARCHAR](50) NOT NULL,
     [idProgramacionDetalle] [UNIQUEIDENTIFIER] NULL,
     [idTurno] [UNIQUEIDENTIFIER] NULL,
+    [observacion] [VARCHAR](255) NULL,
 
     CONSTRAINT [PK_Bitacora]
 PRIMARY KEY CLUSTERED
@@ -276,79 +109,11 @@ WITH
 ) ON [PRIMARY]
 GO
 
--- Agregar clave foránea a la tabla Biometricos
-ALTER TABLE [dbo].[Bitacora] WITH CHECK ADD CONSTRAINT [FK_Bitacora_Biometricos] 
-FOREIGN KEY([idBiometrico])
-REFERENCES [dbo].[Biometricos] ([idBiometrico])
-GO
 
--- Procedure principal que orquesta las validaciones
-CREATE PROCEDURE [dbo].[SAVE_Bitacora]
-    @Identificacion VARCHAR(15),
-    @NombreCompleto VARCHAR(100),
-    @identificadorBiometrico VARCHAR(50),
-    @FechaHora DATETIME
-AS
-BEGIN
-    SET NOCOUNT ON;
 
-    DECLARE @idBiometrico UNIQUEIDENTIFIER;
-    DECLARE @tipoMarcacion VARCHAR(20);
-    DECLARE @idProgramacionDetalle UNIQUEIDENTIFIER;
-    DECLARE @idTurno UNIQUEIDENTIFIER;
-
-    -- Validar usuario
-    EXEC [dbo].[ValidarUsuarioBiometrico] @Identificacion, @NombreCompleto;
-
-    -- Validar biométrico y obtener su ID
-    EXEC [dbo].[ValidarBiometrico] @identificadorBiometrico, @idBiometrico OUTPUT;
-
-    -- Insertar registro si el biométrico existe
-    IF @idBiometrico IS NOT NULL
-    BEGIN
-        -- 1. Procesar la marcación para determinar el tipo (entrada/salida)
-        EXEC [dbo].[ProcesarMarcacionBiometrica]
-            @Identificacion,
-            @FechaHora,
-            @idBiometrico,
-            @tipoMarcacion OUTPUT;
-
-        -- 2. Asociar la marcación con el turno programado
-        EXEC [dbo].[AsociarMarcacionConTurno]
-            @Identificacion,
-            @FechaHora,
-            @idProgramacionDetalle OUTPUT,
-            @idTurno OUTPUT;
-
-        -- 3. Insertar el registro en la bitácora con toda la información
-        INSERT INTO [dbo].[Bitacora]
-            (
-            idBitacora,
-            idBiometrico,
-            Identificacion,
-            NombreCompleto,
-            FechaHora,
-            tipoMarcacion,
-            idProgramacionDetalle,
-            idTurno
-            )
-        VALUES
-            (
-                NEWID(),
-                @idBiometrico,
-                @Identificacion,
-                @NombreCompleto,
-                @FechaHora,
-                @tipoMarcacion,
-                @idProgramacionDetalle,
-                @idTurno
-            );
-    END
-END;
 /* -------------------------------------------------- */
+/* Tabla Turnos */
 /* -------------------------------------------------- */
-/* -------------------------------------------------- */
-
 CREATE TABLE [dbo].[Turnos]
 (
     [idTurno] [UNIQUEIDENTIFIER] NOT NULL,
@@ -384,10 +149,8 @@ CREATE TABLE [dbo].[ProgramacionTurnos]
 )
 
 /* -------------------------------------------------- */
+/* Tabla Programación Turnos Detalle */
 /* -------------------------------------------------- */
-/* -------------------------------------------------- */
-
-
 CREATE TABLE [dbo].[ProgramacionTurnosDetalle]
 (
     [idProgramacionDetalle] [UNIQUEIDENTIFIER] NOT NULL,
@@ -402,16 +165,301 @@ CREATE TABLE [dbo].[ProgramacionTurnosDetalle]
         REFERENCES [dbo].[Turnos] ([idTurno])
 )
 
+
+/* -------------------------------------------------- */
+/* Procedimientos */
+/* -------------------------------------------------- */
+
+-- Procedimiento para validar usuarios
+CREATE PROCEDURE [dbo].[ValidarUsuarioBiometrico]
+    @identificacion VARCHAR(15),
+    @nombreCompleto VARCHAR(100)
+AS
+BEGIN
+    DECLARE @idUsuario UNIQUEIDENTIFIER;
+
+    -- Verificar si existe en cualquiera de las tablas
+    SELECT TOP 1
+        @idUsuario = idUsuario
+    FROM [dbo].[vUsuariosAppBiometrico]
+    WHERE Identificacion = @identificacion;
+
+    -- Si no existe, crearlo en UsuariosBiometrico
+    IF @idUsuario IS NULL
+    BEGIN
+        SET @idUsuario = NEWID();
+
+        INSERT INTO [dbo].[UsuariosBiometrico]
+            (idUsuario, Identificacion, NombreCompleto)
+        VALUES
+            (@idUsuario, @identificacion, @nombreCompleto);
+    END
+
+    RETURN 0;
+-- Éxito
+END;
+
+
+
+-- Procedimiento para validar dispositivos biométricos
+CREATE PROCEDURE [dbo].[ValidarBiometrico]
+    @identificadorBiometrico VARCHAR(50),
+    @idBiometrico UNIQUEIDENTIFIER OUTPUT
+AS
+BEGIN
+    -- Intentar obtener el ID del biométrico
+    SELECT @idBiometrico = idBiometrico
+    FROM [dbo].[Biometricos]
+    WHERE identificadorBiometrico = @identificadorBiometrico;
+
+    -- Si no existe, asignar el ID genérico
+    IF @idBiometrico IS NULL
+    BEGIN
+        SET @idBiometrico = '00000000-0000-0000-0000-000000000001';
+
+        -- Registrar en log
+        INSERT INTO [dbo].[Logs]
+        VALUES
+            ('Biometrico No Registrado - Dispositivo: '+ @identificadorBiometrico + ' - Fecha: ' + CONVERT(VARCHAR, GETDATE(), 120));
+    END
+
+    RETURN 0;
+END;
+
+
+-- Procedimiento para procesar marcaciones biométricas
+CREATE PROCEDURE [dbo].[ProcesarMarcacionBiometrica]
+    @identificacion VARCHAR(15),
+    @fechaHora DATETIME,
+    @idBiometrico UNIQUEIDENTIFIER,
+    @tipoMarcacion VARCHAR(20) OUTPUT,
+    @observacion VARCHAR(255) OUTPUT
+AS
+BEGIN
+    DECLARE @fechaActual DATE = CAST(@fechaHora AS DATE)
+    DECLARE @horaActual TIME = CAST(@fechaHora AS TIME)
+    DECLARE @idUsuario UNIQUEIDENTIFIER
+    DECLARE @toleranciaMinutos INT = 30
+    -- Configurable
+
+    -- Inicializar variables con valores por defecto
+    SET @tipoMarcacion = 'Sin Definir'
+    SET @observacion = NULL
+
+    -- Obtener idUsuario
+    SELECT @idUsuario = idUsuario
+    FROM [dbo].[vUsuariosAppBiometrico]
+    WHERE Identificacion = @identificacion
+
+    -- Verificar si es primera marcación del día
+    IF NOT EXISTS (
+        SELECT 1
+    FROM Bitacora
+    WHERE Identificacion = @identificacion
+        AND CAST(FechaHora AS DATE) = @fechaActual
+    )
+    BEGIN
+        -- Verificar contra el turno programado
+        DECLARE @horaInicioTurno TIME, @horaFinTurno TIME
+
+        SELECT TOP 1
+            @horaInicioTurno = T.horaInicio, @horaFinTurno = T.horaFin
+        FROM ProgramacionTurnosDetalle PD
+            INNER JOIN ProgramacionTurnos P ON PD.idProgramacion = P.idProgramacion
+            INNER JOIN Turnos T ON PD.idTurno = T.idTurno
+        WHERE P.idUsuario = @idUsuario
+            AND PD.fecha = @fechaActual
+            AND P.activo = 1
+        ORDER BY P.fechaRegistro DESC
+
+        IF @horaInicioTurno IS NOT NULL
+        BEGIN
+            -- Determinar si está dentro del rango de inicio de turno
+            IF DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) BETWEEN -@toleranciaMinutos AND 120
+            BEGIN
+                SET @tipoMarcacion = 'Entrada'
+
+                -- Registrar llegada tardía si aplica
+                IF @horaActual > @horaInicioTurno
+                    SET @observacion = 'Llegada tardía: ' + CAST(DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) AS VARCHAR) + ' minutos'
+            END
+            ELSE IF DATEDIFF(MINUTE, @horaFinTurno, @horaActual) BETWEEN -120 AND @toleranciaMinutos
+            BEGIN
+                SET @tipoMarcacion = 'Salida'
+
+                -- Registrar salida anticipada si aplica
+                IF @horaActual < @horaFinTurno
+                    SET @observacion = 'Salida anticipada: ' + CAST(DATEDIFF(MINUTE, @horaActual, @horaFinTurno) AS VARCHAR) + ' minutos'
+            END
+            ELSE
+            BEGIN
+                SET @tipoMarcacion = 'Fuera de turno'
+                SET @observacion = 'Marcación fuera del horario programado'
+            END
+        END
+        ELSE
+        BEGIN
+            -- No hay turno programado, asumir entrada
+            SET @tipoMarcacion = 'Entrada'
+            SET @observacion = 'Sin turno programado'
+        END
+    END
+    ELSE
+    BEGIN
+        -- Ya hay marcaciones previas ese día
+        DECLARE @ultimaMarcacion DATETIME
+        DECLARE @tipoUltimaMarcacion VARCHAR(20)
+
+        SELECT TOP 1
+            @ultimaMarcacion = FechaHora, @tipoUltimaMarcacion = tipoMarcacion
+        FROM Bitacora
+        WHERE Identificacion = @identificacion
+            AND CAST(FechaHora AS DATE) = @fechaActual
+        ORDER BY FechaHora DESC
+
+        IF DATEDIFF(MINUTE, @ultimaMarcacion, @fechaHora) >= @toleranciaMinutos
+        BEGIN
+            -- Alternar entre entrada y salida
+            SET @tipoMarcacion = CASE 
+                     WHEN @tipoUltimaMarcacion = 'Entrada' THEN 'Salida' 
+                     WHEN @tipoUltimaMarcacion = 'Salida' THEN 'Entrada'
+                     WHEN @tipoUltimaMarcacion IS NULL THEN 'Entrada'
+                     ELSE 'Entrada' 
+                     END
+        END
+        ELSE
+        BEGIN
+            SET @tipoMarcacion = 'Duplicada'
+            SET @observacion = 'Marcación duplicada dentro de ' + CAST(@toleranciaMinutos AS VARCHAR) + ' minutos'
+        END
+    END
+
+    -- Garantizar que nunca se devuelva NULL
+    IF @tipoMarcacion IS NULL
+BEGIN
+        SET @tipoMarcacion = 'Sin Definir'
+        SET @observacion = ISNULL(@observacion, '') + ' - Tipo de marcación indeterminado'
+    END
+END;
+
+
+-- Procedimiento para asociar marcaciones con turnos programados
+CREATE PROCEDURE [dbo].[AsociarMarcacionConTurno]
+    @Identificacion VARCHAR(15),
+    @FechaHora DATETIME,
+    @idProgramacionDetalle UNIQUEIDENTIFIER OUTPUT,
+    @idTurno UNIQUEIDENTIFIER OUTPUT
+AS
+BEGIN
+    DECLARE @idUsuario UNIQUEIDENTIFIER;
+    DECLARE @FechaMarcacion DATE = CAST(@FechaHora AS DATE);
+
+    -- 1. Obtener el idUsuario a partir de la identificación usando la vista
+    SELECT @idUsuario = idUsuario
+    FROM [dbo].[vUsuariosAppBiometrico]
+    WHERE Identificacion = @Identificacion;
+
+    -- 2. Buscar la programación activa para esa fecha
+    SELECT @idProgramacionDetalle = PD.idProgramacionDetalle,
+        @idTurno = PD.idTurno
+    FROM [dbo].[ProgramacionTurnos] PT
+        INNER JOIN [dbo].[ProgramacionTurnosDetalle] PD
+        ON PT.idProgramacion = PD.idProgramacion
+    WHERE PT.idUsuario = @idUsuario
+        AND PD.fecha = @FechaMarcacion
+        AND PT.activo = 1
+        AND PT.fechaInicio <= @FechaMarcacion
+        AND PT.fechaFin >= @FechaMarcacion;
+
+    -- 3. Si no se encuentra programación, asignar un ID genérico
+    IF @idProgramacionDetalle IS NULL OR @idTurno IS NULL
+    BEGIN
+        SET @idProgramacionDetalle = '00000000-0000-0000-0000-000000000001';
+        SET @idTurno = '00000000-0000-0000-0000-000000000001';
+    END
+END;
 /* -------------------------------------------------- */
 /* -------------------------------------------------- */
 /* -------------------------------------------------- */
-/* 
-CREATE PROCEDURE [dbo].[InsertarProgramacionTurnos]
+
+-- Procedure principal que orquesta las validaciones
+CREATE PROCEDURE [dbo].[SAVE_Bitacora]
+    @identificadorBiometrico VARCHAR(50),
+    @Identificacion VARCHAR(15),
+    @NombreCompleto VARCHAR(100),
+    @FechaHora DATETIME
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @idBiometrico UNIQUEIDENTIFIER;
+    DECLARE @tipoMarcacion VARCHAR(20);
+    DECLARE @idProgramacionDetalle UNIQUEIDENTIFIER;
+    DECLARE @idTurno UNIQUEIDENTIFIER;
+    DECLARE @observacion VARCHAR(255);
+
+    -- Validar usuario
+    EXEC [dbo].[ValidarUsuarioBiometrico] @Identificacion, @NombreCompleto;
+
+    -- Validar biométrico y obtener su ID
+    EXEC [dbo].[ValidarBiometrico] @identificadorBiometrico, @idBiometrico OUTPUT;
+
+    -- Insertar registro si el biométrico existe
+    IF @idBiometrico IS NOT NULL
+    BEGIN
+        -- 1. Procesar la marcación para determinar el tipo (entrada/salida)
+        EXEC [dbo].[ProcesarMarcacionBiometrica]
+            @Identificacion,
+            @FechaHora,
+            @idBiometrico,
+            @observacion OUTPUT,
+            @tipoMarcacion OUTPUT;
+
+        -- 2. Asociar la marcación con el turno programado
+        EXEC [dbo].[AsociarMarcacionConTurno]
+            @Identificacion,
+            @FechaHora,
+            @idProgramacionDetalle OUTPUT,
+            @idTurno OUTPUT;
+
+        -- 3. Insertar el registro en la bitácora con toda la información
+        INSERT INTO [dbo].[Bitacora]
+            (
+            idBitacora,
+            idBiometrico,
+            Identificacion,
+            NombreCompleto,
+            FechaHora,
+            tipoMarcacion,
+            idProgramacionDetalle,
+            idTurno,
+            observacion
+            )
+        VALUES
+            (
+                NEWID(),
+                @idBiometrico,
+                @Identificacion,
+                @NombreCompleto,
+                @FechaHora,
+                @tipoMarcacion,
+                @idProgramacionDetalle,
+                @idTurno,
+                @observacion
+            );
+    END
+END;
+
+
+/* -------------------------------------------------- */
+/* -------------------------------------------------- */
+/* -------------------------------------------------- */
+
+CREATE PROCEDURE [dbo].[SAVE_ProgramacionTurnos]
     @idUsuario UNIQUEIDENTIFIER,
     @idCentroTrabajo UNIQUEIDENTIFIER,
     @fechaInicio DATE,
     @fechaFin DATE,
-    @observaciones VARCHAR(500) = NULL,
     @idUsuarioRegistra UNIQUEIDENTIFIER,
     @idTurnoLunes UNIQUEIDENTIFIER = NULL,
     @idTurnoMartes UNIQUEIDENTIFIER = NULL,
@@ -420,12 +468,13 @@ CREATE PROCEDURE [dbo].[InsertarProgramacionTurnos]
     @idTurnoViernes UNIQUEIDENTIFIER = NULL,
     @idTurnoSabado UNIQUEIDENTIFIER = NULL,
     @idTurnoDomingo UNIQUEIDENTIFIER = NULL,
-    @idTurnoDefault UNIQUEIDENTIFIER = NULL,
-    -- Turno para usar si no se especifica para un día particular
-    @idProgramacion UNIQUEIDENTIFIER OUTPUT
+    @idTurnoDefault UNIQUEIDENTIFIER = NULL
+-- Turno para usar si no se especifica para un día particular
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    DECLARE @idProgramacion UNIQUEIDENTIFIER
 
     -- Validaciones básicas
     IF @fechaInicio > @fechaFin
@@ -453,11 +502,9 @@ BEGIN
     BEGIN TRY
         -- Insertar cabecera de programación
         INSERT INTO [dbo].[ProgramacionTurnos]
-        (idProgramacion, idUsuario, idCentroTrabajo, fechaInicio, fechaFin,
-        observaciones, fechaRegistro, idUsuarioRegistra)
+        (idProgramacion, idUsuario, idCentroTrabajo, fechaInicio, fechaFin, fechaRegistro, idUsuarioRegistra)
     VALUES
-        (@idProgramacion, @idUsuario, @idCentroTrabajo, @fechaInicio, @fechaFin,
-            @observaciones, GETDATE(), @idUsuarioRegistra);
+        (@idProgramacion, @idUsuario, @idCentroTrabajo, @fechaInicio, @fechaFin, GETDATE(), @idUsuarioRegistra);
         
         -- Insertar detalles para cada día en el rango
         DECLARE @fechaActual DATE = @fechaInicio;
@@ -493,6 +540,9 @@ BEGIN
         -- Avanzar al siguiente día
         SET @fechaActual = DATEADD(DAY, 1, @fechaActual);
     END
+
+        -- Después de insertar todos los detalles, actualizar las marcaciones
+        EXEC [dbo].[ActualizarMarcacionesSinTurno] @idUsuario, @fechaInicio, @fechaFin;
         
         COMMIT TRANSACTION;
     END TRY
@@ -508,11 +558,130 @@ BEGIN
     END CATCH
 
     RETURN 0;
-END */
+END
 
 /* -------------------------------------------------- */
 /* -------------------------------------------------- */
 /* -------------------------------------------------- */
+
+CREATE OR ALTER PROCEDURE [dbo].[ActualizarMarcacionesSinTurno]
+    @idUsuario UNIQUEIDENTIFIER,
+    @fechaInicio DATE,
+    @fechaFin DATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Crear una tabla temporal para almacenar las marcaciones actualizadas
+    CREATE TABLE #MarcacionesActualizadas
+    (
+        idBitacora UNIQUEIDENTIFIER,
+        Identificacion VARCHAR(15),
+        FechaHora DATETIME,
+        idBiometrico UNIQUEIDENTIFIER
+    );
+
+    -- Primero actualizamos los IDs de programación y turno
+    -- y guardamos las marcaciones actualizadas en la tabla temporal
+    UPDATE B
+    SET B.idProgramacionDetalle = PD.idProgramacionDetalle,
+        B.idTurno = PD.idTurno
+    OUTPUT 
+        INSERTED.idBitacora, 
+        INSERTED.Identificacion,
+        INSERTED.FechaHora,
+        INSERTED.idBiometrico
+    INTO #MarcacionesActualizadas
+    FROM [dbo].[Bitacora] B
+        INNER JOIN [dbo].[vUsuariosAppBiometrico] U ON B.Identificacion = U.Identificacion
+        INNER JOIN [dbo].[ProgramacionTurnos] PT ON U.idUsuario = PT.idUsuario
+        INNER JOIN [dbo].[ProgramacionTurnosDetalle] PD ON PT.idProgramacion = PD.idProgramacion
+    WHERE (U.idUsuario = @idUsuario OR @idUsuario IS NULL)
+        AND CAST(B.FechaHora AS DATE) BETWEEN @fechaInicio AND @fechaFin
+        AND CAST(B.FechaHora AS DATE) = PD.fecha
+        AND (B.idProgramacionDetalle IS NULL OR B.idProgramacionDetalle = '00000000-0000-0000-0000-000000000001'
+        OR B.idTurno IS NULL OR B.idTurno = '00000000-0000-0000-0000-000000000001');
+
+    -- Ahora procesamos cada marcación actualizada para recalcular su tipo
+    DECLARE @idBitacora UNIQUEIDENTIFIER;
+    DECLARE @Identificacion VARCHAR(15);
+    DECLARE @FechaHora DATETIME;
+    DECLARE @idBiometrico UNIQUEIDENTIFIER;
+    DECLARE @tipoMarcacion VARCHAR(20);
+    DECLARE @observacion VARCHAR(255);
+
+    -- Cursor para recorrer las marcaciones actualizadas
+    DECLARE curMarcaciones CURSOR FOR 
+        SELECT idBitacora, Identificacion, FechaHora, idBiometrico
+    FROM #MarcacionesActualizadas;
+
+    OPEN curMarcaciones;
+    FETCH NEXT FROM curMarcaciones INTO @idBitacora, @Identificacion, @FechaHora, @idBiometrico;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        -- Llamar al procedimiento existente para determinar el tipo de marcación
+        EXEC [dbo].[ProcesarMarcacionBiometrica]
+            @identificacion = @Identificacion,
+            @fechaHora = @FechaHora,
+            @idBiometrico = @idBiometrico,
+            @tipoMarcacion = @tipoMarcacion OUTPUT,
+            @observacion = @observacion OUTPUT;
+
+        -- Actualizar la marcación con el tipo recalculado
+        UPDATE [dbo].[Bitacora]
+        SET tipoMarcacion = @tipoMarcacion,
+            observacion = @observacion
+        WHERE idBitacora = @idBitacora;
+
+        FETCH NEXT FROM curMarcaciones INTO @idBitacora, @Identificacion, @FechaHora, @idBiometrico;
+    END
+
+    CLOSE curMarcaciones;
+    DEALLOCATE curMarcaciones;
+
+    -- Eliminar la tabla temporal
+    DROP TABLE #MarcacionesActualizadas;
+END;
+
+/* -------------------------------------------------- */
+/* -------------------------------------------------- */
+/* -------------------------------------------------- */
+
+CREATE TRIGGER [dbo].[TRG_ActualizarMarcacionesSinTurno]
+ON [dbo].[ProgramacionTurnos]
+AFTER INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Procesar cada fila insertada
+    DECLARE @idUsuario UNIQUEIDENTIFIER;
+    DECLARE @fechaInicio DATE;
+    DECLARE @fechaFin DATE;
+
+    DECLARE curInserted CURSOR FOR 
+        SELECT idUsuario, fechaInicio, fechaFin
+    FROM inserted;
+
+    OPEN curInserted;
+    FETCH NEXT FROM curInserted INTO @idUsuario, @fechaInicio, @fechaFin;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        EXEC [dbo].[ActualizarMarcacionesSinTurno] @idUsuario, @fechaInicio, @fechaFin;
+        FETCH NEXT FROM curInserted INTO @idUsuario, @fechaInicio, @fechaFin;
+    END
+
+    CLOSE curInserted;
+    DEALLOCATE curInserted;
+END;
+
+/* -------------------------------------------------- */
+/* -------------------------------------------------- */
+/* -------------------------------------------------- */
+
+
 SELECT TOP 10
     *
 FROM Usuarios
