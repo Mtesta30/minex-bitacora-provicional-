@@ -1066,7 +1066,8 @@ if (isset($_GET['band'])) {
                 $count = 1;
         }
 
-        $usuario = ENCR::descript($list_record['usuario']);
+        // $usuario = ENCR::descript($list_record['usuario']);
+        $usuario = '22954799-f18d-4b80-aae2-6868cf053354';
         $sql1 = "SELECT * FROM bitacora_horarios inner join Actividades on Bitacora_horarios.idactividad = Actividades.idActividad  WHERE id_turno ='$turno' ORDER BY FechaRegistro";
         $res = sqlsrv_query($conn, $sql1, $params, $options);
         $row_permiso = sqlsrv_num_rows($res);
@@ -1194,7 +1195,8 @@ if (isset($_GET['band'])) {
     if ($_GET['band'] == 'buscar_asignados') {
         $turno = $list_record['turno'];
         $texto = $list_record['texto'];
-        $usuario = ENCR::descript($list_record['usuario']);
+        // $usuario = ENCR::descript($list_record['usuario']);
+        $usuario = '22954799-f18d-4b80-aae2-6868cf053354';
         $hoy = date('Y-m-d');
         $sql = "SELECT BitacoraTurnos.idusuario, UsuariosDetalle.NombreCompleto,turnos_empleados.descripcion,FechaInicio, FechaFin, dias, destino.Descripcion as centro  
             FROM bitacora_horarios

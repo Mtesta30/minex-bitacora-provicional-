@@ -1101,7 +1101,7 @@ async function get_crear_turno() {
     let FechaInicial_turno = document.getElementById("FechaInicial_turno").value;
     let FechaFinal_turno = document.getElementById("FechaFinal_turno").value;
     let lista_turnos = document.getElementById("lista_turnos").value;
-    let lista_actividades = document.getElementById("lista_actividades").value;
+    let lista_actividades = '47C297B3-411E-445E-8357-797687831DC2';
     //if (FechaInicial_turno<FechaFinal_turno){
     let url = "../modelo/jornada_bitacora.php?band=get_crear_turno";
     let param = { FechaInicial_turno: FechaInicial_turno, FechaFinal_turno: FechaFinal_turno, lista_turnos: lista_turnos, lista_actividades: lista_actividades, idusuario: id_usuario };
@@ -1203,6 +1203,23 @@ function cargar_turnos(op) {
     }
     xhr.send('');
 }
+
+function cargar_turnosAll() {
+    fetch('../modelo/jornada_bitacora.php?band=cargar_turnos')
+        .then(response => response.json())
+        .then(data => {
+            let tablaTurnos = document.getElementById('div_tabla_turnos');
+            let html = '<table class="table table-hover table-condensed table-bordered table-striped" style="width:25%">';
+            html += '<thead><tr><th>Descripción</th></tr></thead><tbody>';
+            data.forEach(turno => {
+                html += `<tr><td>${turno.name}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            tablaTurnos.innerHTML = html;
+        })
+        .catch(error => console.error('Error:', error));
+}
+
 
 async function delete_Turnos_asignado(id) {
     let iduser = consulta('idUsuario_asignar', 'list_Usuario_asignar');

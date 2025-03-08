@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once '../../conectartestTraz2.php';
+require_once '../../conectartraz.php';
 // require_once '../../conectar.php';
 
 // Usuario de prueba
@@ -87,6 +87,16 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
         .form-control {
             margin-bottom: 10px;
         }
+
+        #div_tabla_turnos {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #div_tabla_turnos table {
+            margin: 0 auto;
+        }
     </style>
     <style type="text/css">
         #empresa {
@@ -145,7 +155,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     echo '<li><a href="#" class="opciones" data-toggle="collapse" data-target="#idTurnos"><span class="glyphicon glyphicon-time" style="color: #5c80c0;"></span>Turnos </a>
                             <ul id="idTurnos" class="collapse">';
                     if (isset($_SESSION['permisos_todos']['CREAR_TURNOS'])) {
-                        echo '<a href="#" onClick="cargar_turnos(0); Buscar_actividad();" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#crear_t"><span class="glyphicon glyphicon-folder-open" style="color: #5c80c0;"></span> Crear Turnos</a><br>';
+                        echo '<a href="#" onClick="cargar_turnos(0); Buscar_actividad(); cargar_turnosAll();" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#crear_t"><span class="glyphicon glyphicon-folder-open" style="color: #5c80c0;"></span> Crear Turnos</a><br>';
                     }
                     if (isset($_SESSION['permisos_todos']['ASIGNAR_TURNOS'])) {
                         echo '<a href="#" onClick="cargar_turnos(1);" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idTurnos_t"><span class="glyphicon glyphicon-pencil" style="color: #5c80c0;"></span> Asignar Turnos</a>';
@@ -705,29 +715,31 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
             <div class="container-fluid">
                 <div class="row">
                     <h2 class="">CREAR TURNO TRABAJO</h2>
-                    <div class="col-xs- col-sm-3 col-md-3 col-lg-3">
+                    <div class="col-xs-12 col-sm-4 col-md-4 col-lg-4">
                         <label for="idUnidadNegocioConsulta">Turnos:</label><br>
                         <select class="form-control" id="lista_turnos" onchange="Buscar_detalle_t(this)"></select>
                     </div>
-                    <div class="col-xs-2 col-sm-2 col-md-2 col-lg-2">
+                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
                         <label>Hora Entrada:</label>
                         <input class="form-control" type="time" id="FechaInicial_turno"></input>
                     </div>
-                    <div class="col-xs-2 col-sm-2 col-md-2 col-lg-2">
+                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
                         <label>Hora Salida:</label>
                         <input class="form-control" type="time" id="FechaFinal_turno"></input>
                     </div>
-                    <div class="col-xs-2 col-sm-3 col-md-3 col-lg-3">
+                    <!-- <div class="col-xs-2 col-sm-3 col-md-3 col-lg-3">
                         <label for="actividad_turno">Actividad:</label>
                         <select class="form-control" id="lista_actividades"></select>
-                    </div>
+                    </div> -->
                     <div class="col-xs-1 col-sm-1 col-md-1 col-lg-1">&nbsp;
                         <button type="button" id="button_crear_t" class="btn btn-primary" onclick="get_crear_turno()">Crear Turno</button>
                     </div>
                 </div>
             </div><br>
-            <div class="table-responsive">
-                <div id="div_tabla_turnos"></div>
+            <div class="table-responsive" style="text-align: center; margin: 0 auto;">
+                <div id="div_tabla_turnos">
+                    <!-- La tabla se mostrará centrada dentro de este div -->
+                </div>
             </div>
         </div>
 
