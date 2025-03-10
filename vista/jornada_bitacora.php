@@ -565,6 +565,45 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     </div>
                 </div><br>
             </div><br>
+            <div class="container-fluid" style="border: 1px solid; border-radius: 5px; margin-top: 15px;">
+                <div class="row">
+                    <h3 class="col-xs-12">Registro Múltiple de Usuarios</h3>
+                    <div class="col-xs-9 col-sm-10 col-md-10 col-lg-10">
+                        <label for="buscar_usuarios">Buscar Usuarios:</label>
+                        <input type="text" id="buscar_usuarios" class="form-control" placeholder="Buscar por nombre, cédula o cargo" onkeyup="buscarUsuarios(this.value)">
+                    </div>
+                    <div class="col-xs-3 col-sm-2 col-md-2 col-lg-2" style="margin-top: 25px;">
+                        <button type="button" class="btn btn-success" onclick="asignarTurnoMultiple()">
+                            Asignar a Seleccionados
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-responsive" style="margin-top: 15px;">
+                    <table class="table table-striped table-bordered table-hover">
+                        <thead>
+                            <tr>
+                                <th class="text-center" style="width: 40px;">
+                                    <input type="checkbox" id="seleccionar_todos" onclick="seleccionarTodos()">
+                                </th>
+                                <th class="text-center">Nombre</th>
+                                <th class="text-center">Cédula</th>
+                                <th class="text-center">Cargo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla_usuarios_multiple">
+                            <!-- Los usuarios se cargarán aquí dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="row" style="margin-bottom: 15px;">
+                    <div class="col-xs-12 text-center">
+                        <span id="conteo_seleccionados">0</span> usuarios seleccionados
+                    </div>
+                </div>
+            </div> <br>
+
             <div class="container-fluid" style="border: 1px solid; border-radius: 5px;">
                 <div class="row">
                     <div class="col-xs-2 col-sm-4 col-md-4 col-lg-4">
@@ -714,28 +753,40 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
         <div class="collapse fade" id="crear_t" tabindex="-1" role="dialog" aria-labelledby="collapse" aria-hidden="true">
             <div class="container-fluid">
                 <div class="row">
-                    <h2 class="">CREAR TURNO TRABAJO</h2>
-                    <div class="col-xs-12 col-sm-4 col-md-4 col-lg-4">
-                        <label for="idUnidadNegocioConsulta">Turnos:</label><br>
-                        <select class="form-control" id="lista_turnos" onchange="Buscar_detalle_t(this)"></select>
-                    </div>
+                    <h2 class="col-xs-12">CREAR TURNO TRABAJO</h2>
+                </div>
+                <div class="row">
                     <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
+                        <div class="form-group">
+                            <label for="descripcion_auto">Nombre del turno:</label>
+                            <div class="input-group">
+                                <span class="input-group-addon">
+                                    <input type="checkbox" id="descripcion_auto" onchange="toggleDescripcionMode()">
+                                    <label for="descripcion_auto" style="margin-bottom: 0; margin-left: 5px;">Auto</label>
+                                </span>
+                                <input class="form-control" type="text" id="Nombre_turno" placeholder="Nombre del turno">
+                            </div>
+                            <small class="text-muted" id="descripcion_help">Introduce manualmente el nombre del turno</small>
+                        </div>
+                    </div>
+                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2">
                         <label>Hora Entrada:</label>
-                        <input class="form-control" type="time" id="FechaInicial_turno"></input>
+                        <input class="form-control" type="time" id="FechaInicial_turno" onchange="calcularDuracion(this.value, document.getElementById('FechaFinal_turno').value)">
                     </div>
-                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
+                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2">
                         <label>Hora Salida:</label>
-                        <input class="form-control" type="time" id="FechaFinal_turno"></input>
+                        <input class="form-control" type="time" id="FechaFinal_turno" onchange="calcularDuracion(document.getElementById('FechaInicial_turno').value, this.value)">
                     </div>
-                    <!-- <div class="col-xs-2 col-sm-3 col-md-3 col-lg-3">
-                        <label for="actividad_turno">Actividad:</label>
-                        <select class="form-control" id="lista_actividades"></select>
-                    </div> -->
-                    <div class="col-xs-1 col-sm-1 col-md-1 col-lg-1">&nbsp;
+                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2">
+                        <label>Duración:</label>
+                        <input class="form-control" type="time" id="Duracion_turno" readonly style="background-color: #f9f9f9;">
+                    </div>
+                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2" style="margin-top: 25px;">
                         <button type="button" id="button_crear_t" class="btn btn-primary" onclick="get_crear_turno()">Crear Turno</button>
                     </div>
                 </div>
             </div><br>
+            <!-- <h2>Turnos Existentes:</h2> -->
             <div class="table-responsive" style="text-align: center; margin: 0 auto;">
                 <div id="div_tabla_turnos">
                     <!-- La tabla se mostrará centrada dentro de este div -->

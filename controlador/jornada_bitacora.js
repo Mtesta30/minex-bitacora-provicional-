@@ -1097,44 +1097,7 @@ async function list_Actividad_turno(object) {
     }
 }
 
-async function get_crear_turno() {
-    let FechaInicial_turno = document.getElementById("FechaInicial_turno").value;
-    let FechaFinal_turno = document.getElementById("FechaFinal_turno").value;
-    let lista_turnos = document.getElementById("lista_turnos").value;
-    let lista_actividades = '47C297B3-411E-445E-8357-797687831DC2';
-    //if (FechaInicial_turno<FechaFinal_turno){
-    let url = "../modelo/jornada_bitacora.php?band=get_crear_turno";
-    let param = { FechaInicial_turno: FechaInicial_turno, FechaFinal_turno: FechaFinal_turno, lista_turnos: lista_turnos, lista_actividades: lista_actividades, idusuario: id_usuario };
-    let data = JSON.stringify(param);
-    try {
-        let response = await sendRequest(url, data);
-        // console.log(response);  
-        if (response != 1) {
-            json_parse = JSON.parse(response)
-            $('#lista_turnos').find('option').remove();
-            let opcion = '';
-            let id_nuevo = '';
-            $.each(json_parse, function (key, val) {
-                opcion += '<option value="' + val.id + '">' + val.name + '</option>';
-                id_nuevo = val.id;
-                //console.log(val.id,val)        
-            });
-            $('#lista_turnos').append(opcion);
-            let lista_turnos = document.getElementById("lista_turnos").value;
-            cargar_turnos(0);
-            setTimeout(function () { document.getElementById("lista_turnos").value = id_nuevo }, 300)
-        } else {
-            alertify.error('Horas Invalidas..')
-        }
 
-    } catch (error) {
-        console.log(error);
-    }
-    /* }else{
-         alertify.error('Hora inicial mayor que hora final..')
-     }*/
-    Buscar_detalle_t();
-}
 
 async function get_asignar_turno() {
     let FechaInicial_turno = document.getElementById("fecha_ini").value;
@@ -1204,21 +1167,357 @@ function cargar_turnos(op) {
     xhr.send('');
 }
 
+/*==============================================
+    💼 MÓDULO DE GESTIÓN DE TURNOS 💼
+================================================
+
+
+/*==============================================
+    🕕 SUBMÓDULO DE TURNOS 🕕
+================================================
+    ✨ Funcionalidades principales:
+    
+    ⏰ Visualización de turnos existentes
+    🗑️ Eliminación de turnos
+    ✏️ Edición y actualización de turnos
+    ➕ Creación de nuevos turnos
+================================================*/
+
 function cargar_turnosAll() {
     fetch('../modelo/jornada_bitacora.php?band=cargar_turnos')
         .then(response => response.json())
         .then(data => {
             let tablaTurnos = document.getElementById('div_tabla_turnos');
-            let html = '<table class="table table-hover table-condensed table-bordered table-striped" style="width:25%">';
-            html += '<thead><tr><th>Descripción</th></tr></thead><tbody>';
+            let html = '<table class="table table-hover table-condensed table-bordered table-striped" style="margin: 15px;">';
+            html += '<thead><tr>' +
+                '<th class="text-center">Descripción</th>' +
+                '<th class="text-center">Hora Inicio</th>' +
+                '<th class="text-center">Hora Fin</th>' +
+                '<th class="text-center">Duración</th>' +
+                '<th class="text-center">Acciones</th>' +
+                '</tr></thead><tbody>';
+
             data.forEach(turno => {
-                html += `<tr><td>${turno.name}</td></tr>`;
+                html += `<tr>
+                    <td>${turno.name}</td>
+                    <td class="text-center">${turno.horaInicio || '--:--'}</td>
+                    <td class="text-center">${turno.horaFin || '--:--'}</td>
+                    <td class="text-center">${turno.duracion || '--:--'}</td>
+                    <td class="text-center">
+                        <button class="btn btn-xs btn-primary" onclick="editarTurno('${turno.id}')"><i class="glyphicon glyphicon-pencil"></i></button>
+                        <button class="btn btn-xs btn-danger" onclick="eliminarTurno('${turno.id}')"><i class="glyphicon glyphicon-trash"></i></button>
+                    </td>
+                </tr>`;
             });
+
             html += '</tbody></table>';
             tablaTurnos.innerHTML = html;
         })
         .catch(error => console.error('Error:', error));
 }
+
+
+// Función para alternar entre descripción manual y automática
+function toggleDescripcionMode() {
+    let checkboxAuto = document.getElementById('descripcion_auto');
+    let inputDescripcion = document.getElementById('Nombre_turno');
+    let helpText = document.getElementById('descripcion_help');
+
+    if (checkboxAuto.checked) {
+        // Modo automático
+        inputDescripcion.setAttribute('readonly', true);
+        helpText.textContent = 'El nombre se generará al introducir las horas';
+        generarDescripcionAuto();
+    } else {
+        // Modo manual
+        inputDescripcion.removeAttribute('readonly');
+        inputDescripcion.value = '';
+        helpText.textContent = 'Introduce manualmente el nombre del turno';
+    }
+}
+
+// Función para generar descripción automática del turno
+function generarDescripcionAuto() {
+    let checkboxAuto = document.getElementById('descripcion_auto');
+    if (!checkboxAuto.checked) return;
+
+    let horaInicio = document.getElementById('FechaInicial_turno').value;
+    let horaFin = document.getElementById('FechaFinal_turno').value;
+
+    if (horaInicio && horaFin) {
+        // Generar descripción usando formato de 24 horas
+        let descripcion = `Turno ( ${horaInicio} - ${horaFin} )`;
+        document.getElementById('Nombre_turno').value = descripcion;
+
+    }
+}
+
+// Función para calcular la duración entre dos horas
+function calcularDuracion(horaInicio, horaFin) {
+    if (!horaInicio || !horaFin) return false;
+
+    // Convertir a minutos para calcular diferencia
+    let [h1, m1] = horaInicio.split(':').map(Number);
+    let [h2, m2] = horaFin.split(':').map(Number);
+
+    let minInicio = h1 * 60 + m1;
+    let minFin = h2 * 60 + m2;
+
+    // Si hora fin es menor, asumimos que cruza la medianoche
+    if (minFin < minInicio) {
+        minFin += 24 * 60; // Añadimos 24 horas
+    }
+
+    let difMinutos = minFin - minInicio;
+    let horas = Math.floor(difMinutos / 60);
+    let minutos = difMinutos % 60;
+
+    // Validar que haya al menos 8 horas entre inicio y fin
+    const MINIMO_HORAS = 8;
+    const MINIMO_MINUTOS = MINIMO_HORAS * 60;
+
+    if (difMinutos < MINIMO_MINUTOS) {
+        alertify.error(`Error: El turno debe tener una duración mínima de ${MINIMO_HORAS} horas.`);
+        // Resaltar los campos de hora con borde rojo
+        document.getElementById('FechaInicial_turno').style.borderColor = 'red';
+        document.getElementById('FechaFinal_turno').style.borderColor = 'red';
+        // No actualizar el campo de duración si no cumple con el mínimo
+        return false;
+    } else {
+        // Restablecer el color del borde si es válido
+        document.getElementById('FechaInicial_turno').style.borderColor = '#ccc';
+        document.getElementById('FechaFinal_turno').style.borderColor = '#ccc';
+    }
+
+    // Formatear para el campo duración - siempre actualizar esto si pasa la validación
+    document.getElementById('Duracion_turno').value =
+        `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
+
+    // Generar descripción automática solo si el checkbox está marcado
+    if (document.getElementById('descripcion_auto')?.checked) {
+        generarDescripcionAuto();
+    }
+
+    return true;
+}
+// Funciones para las acciones
+async function get_crear_turno() {
+    let FechaInicial_turno = document.getElementById("FechaInicial_turno").value;
+    let FechaFinal_turno = document.getElementById("FechaFinal_turno").value;
+    let Nombre_turno = document.getElementById("Nombre_turno").value;
+
+    // Validar que todos los campos estén llenos
+    if (!FechaInicial_turno || !FechaFinal_turno || !Nombre_turno) {
+        alertify.error("Todos los campos son obligatorios");
+        return;
+    }
+
+    // Validar la duración mínima
+    if (!calcularDuracion(FechaInicial_turno, FechaFinal_turno)) {
+        return; // Si no cumple con la duración mínima, detener la ejecución
+    }
+
+    let Duracion_turno = document.getElementById("Duracion_turno").value;
+
+    let url = "../modelo/jornada_bitacora.php?band=get_crear_turno";
+    let param = {
+        FechaInicial_turno: FechaInicial_turno,
+        FechaFinal_turno: FechaFinal_turno,
+        Nombre_turno: Nombre_turno,
+        Duracion_turno: Duracion_turno,
+        idusuario: id_usuario
+    };
+    let data = JSON.stringify(param);
+    try {
+        let response = await sendRequest(url, data);
+        // console.log(response);  
+        if (response != 1) {
+            alertify.success('Turno creado correctamente');
+            cargar_turnosAll();
+            document.getElementById('Nombre_turno').value = '';
+            document.getElementById('FechaInicial_turno').value = '';
+            document.getElementById('FechaFinal_turno').value = '';
+            document.getElementById('Duracion_turno').value = '';
+        } else {
+            alertify.error('Horas Invalidas..')
+        }
+
+    } catch (error) {
+        console.log(error);
+        alertify.error('Error al crear el turno');
+    }
+
+    Buscar_detalle_t();
+}
+
+function editarTurno(idTurno) {
+    // Buscar el turno en la lista de turnos
+    fetch(`../modelo/jornada_bitacora.php?band=get_turno&idTurno=${idTurno}`)
+        .then(response => response.json())
+        .then(turno => {
+            // Cargar datos en el formulario
+            document.getElementById('Nombre_turno').value = turno.name;
+            document.getElementById('FechaInicial_turno').value = turno.horaInicio;
+            document.getElementById('FechaFinal_turno').value = turno.horaFin;
+            document.getElementById('Duracion_turno').value = turno.duracion;
+
+            // Cambiar el botón para editar
+            let botonCrear = document.getElementById('button_crear_t');
+            botonCrear.innerHTML = 'Actualizar Turno';
+            botonCrear.onclick = function () {
+                actualizarTurno(idTurno);
+            };
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+function eliminarTurno(idTurno) {
+    if (confirm('¿Está seguro que desea eliminar este turno?')) {
+        fetch(`../modelo/jornada_bitacora.php?band=eliminar_turno&idTurno=${idTurno}`, {
+            method: 'POST'
+        })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    alertify.success('Turno eliminado correctamente');
+                    cargar_turnosAll(); // Recargar la tabla
+                } else {
+                    alertify.error('No se pudo eliminar el turno: ' + result.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alertify.error('Error al eliminar el turno');
+            });
+    }
+}
+
+/*==============================================
+    🕕 SUBMÓDULO ASIGNAR TURNOS 🕕
+================================================
+    ✨ Funcionalidades principales:
+    
+    🔄 Búsqueda de usuarios
+    📝 Asignación de turnos a múltiples usuarios
+
+================================================*/
+
+// Función para buscar usuarios
+function buscarUsuarios(texto) {
+    fetch('../modelo/jornada_bitacora.php?band=buscar_usuarios&texto=' + texto)
+        .then(response => response.json())
+        .then(data => {
+            let tablaUsuarios = document.getElementById('tabla_usuarios_multiple');
+            let html = '';
+
+            if (data.length === 0) {
+                html = '<tr><td colspan="5" class="text-center">No se encontraron usuarios</td></tr>';
+            } else {
+                data.forEach(usuario => {
+                    html += `<tr>
+                            <td class="text-center">
+                                <input type="checkbox" name="usuarios[]" value="${usuario.id}" onchange="actualizarConteo()">
+                            </td>
+                            <td>${usuario.nombre}</td>
+                            <td>${usuario.cedula}</td>
+                            <td>${usuario.cargo || 'No especificado'}</td>
+                        </tr>`;
+                });
+            }
+
+            tablaUsuarios.innerHTML = html;
+        })
+        .catch(error => console.error('Error:', error));
+}
+
+// Función para seleccionar/deseleccionar todos
+function seleccionarTodos() {
+    let checkboxes = document.getElementsByName('usuarios[]');
+    let seleccionarTodos = document.getElementById('seleccionar_todos').checked;
+
+    for (let i = 0; i < checkboxes.length; i++) {
+        checkboxes[i].checked = seleccionarTodos;
+    }
+
+    actualizarConteo();
+}
+
+// Función para actualizar el conteo de usuarios seleccionados
+function actualizarConteo() {
+    let checkboxes = document.getElementsByName('usuarios[]');
+    let contador = 0;
+
+    for (let i = 0; i < checkboxes.length; i++) {
+        if (checkboxes[i].checked) contador++;
+    }
+
+    document.getElementById('conteo_seleccionados').innerText = contador;
+}
+
+// Función para asignar turno a múltiples usuarios
+function asignarTurnoMultiple() {
+    let checkboxes = document.getElementsByName('usuarios[]');
+    let usuariosSeleccionados = [];
+
+    for (let i = 0; i < checkboxes.length; i++) {
+        if (checkboxes[i].checked) {
+            usuariosSeleccionados.push(checkboxes[i].value);
+        }
+    }
+
+    if (usuariosSeleccionados.length === 0) {
+        alertify.error('Debe seleccionar al menos un usuario');
+        return;
+    }
+
+    let idTurno = document.getElementById('lista_turnos_a').value;
+    let fechaInicio = document.getElementById('fecha_ini').value;
+    let fechaFin = document.getElementById('fecha_fin').value;
+
+    if (!idTurno || !fechaInicio || !fechaFin) {
+        alertify.error('Debe seleccionar un turno y fechas de inicio y fin');
+        return;
+    }
+
+    let diasLaborales = [];
+    let diasSeleccionados = $('#dias_laborales').multipleSelect('getSelects');
+    if (diasSeleccionados && diasSeleccionados.length > 0) {
+        diasLaborales = diasSeleccionados;
+    }
+
+    // Enviar datos para asignación múltiple
+    fetch('../modelo/jornada_bitacora.php?band=asignar_turno_multiple', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            idTurno: idTurno,
+            fechaInicio: fechaInicio,
+            fechaFin: fechaFin,
+            usuarios: usuariosSeleccionados,
+            diasLaborales: diasLaborales
+        })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alertify.success('Turnos asignados correctamente a ' + usuariosSeleccionados.length + ' usuarios');
+                // Refrescar la tabla de turnos asignados
+                buscar_asignados(document.getElementById('lista_turnos_a'));
+            } else {
+                alertify.error('Error al asignar turnos: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alertify.error('Error al asignar turnos');
+        });
+}
+
+
+
+
 
 
 async function delete_Turnos_asignado(id) {

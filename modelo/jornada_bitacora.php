@@ -100,6 +100,7 @@ if (isset($_GET['band'])) {
     }
 
     if ($_GET['band'] == 'get_Usuarios') {
+        $Usuario = $list_record['Usuario'];
         $sql = "SELECT idUsuario,NombreUsuarioLargo FROM Usuarios WHERE habilitado=1";
         $res = sqlsrv_query($conn, $sql);
         $data = [];
@@ -638,13 +639,16 @@ if (isset($_GET['band'])) {
     }
 
     if ($_GET['band'] == 'cargar_turnos') {
-        $sql = "SELECT * FROM turnos_empleados";
+        $sql = "SELECT * FROM testTraz.dbo.turnos";
         $res = sqlsrv_query($conn, $sql);
         $data = [];
         while ($aa = sqlsrv_fetch_array($res)) {
-            $consecutivo = $aa['id_turno'];
+            $consecutivo = $aa['idTurno'];
             $Nombre = $aa['descripcion'];
-            $registro = array('id' => $consecutivo, 'name' => $Nombre);
+            $horaInicio = substr(date_format($aa['horaInicio'], 'H:i:s'), 0, 5);
+            $horaFin = substr(date_format($aa['horaFin'], 'H:i:s'), 0, 5);
+            $duracion = sprintf('%02d:%02d', floor($aa['duracionHoras']), round(($aa['duracionHoras']-floor($aa['duracionHoras']))*60));
+            $registro = array('id' => $consecutivo, 'name' => $Nombre, 'horaInicio' => $horaInicio, 'horaFin' => $horaFin, 'duracion' => $duracion);
             array_push($data, $registro);
         }
         $json = (json_encode($data));

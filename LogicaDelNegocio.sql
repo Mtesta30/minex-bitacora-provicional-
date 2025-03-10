@@ -126,6 +126,83 @@ CREATE TABLE [dbo].[Turnos]
     CONSTRAINT [PK_Turnos] PRIMARY KEY CLUSTERED ([idTurno] ASC)
 )
 
+CREATE OR ALTER PROCEDURE [dbo].[SAVE_Turnos]
+    @descripcion VARCHAR(100),
+    @horaInicio TIME(7),
+    @horaFin TIME(7),
+    @duracionHoras DECIMAL(5,2),
+    @activo BIT = 1
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @idTurno UNIQUEIDENTIFIER;
+    DECLARE @duracionCalculada DECIMAL(5,2);
+    DECLARE @minutosEntreTurnos INT;
+    DECLARE @errorMessage NVARCHAR(255);
+    DECLARE @minHorasDuracion DECIMAL(5,2) = 8.00;
+    -- Mínimo 8 horas entre inicio y fin
+
+    -- Validar que los datos no sean nulos
+    IF @descripcion IS NULL OR @horaInicio IS NULL OR @horaFin IS NULL OR @duracionHoras IS NULL
+    BEGIN
+        SET @errorMessage = 'La descripción, hora de inicio, hora de fin y duración son campos obligatorios.';
+        RAISERROR(@errorMessage, 16, 1);
+        RETURN -1;
+    END
+
+    -- Calcular los minutos entre la hora de inicio y fin
+    IF @horaFin > @horaInicio
+        SET @minutosEntreTurnos = DATEDIFF(MINUTE, @horaInicio, @horaFin);
+    ELSE -- Si la hora fin es menor (cruza medianoche)
+        SET @minutosEntreTurnos = DATEDIFF(MINUTE, @horaInicio, '23:59:59.9999999') + 
+                                  DATEDIFF(MINUTE, '00:00:00.0000000', @horaFin) + 1;
+
+    -- Convertir minutos a horas decimales para comparar con @duracionHoras
+    SET @duracionCalculada = CAST((@minutosEntreTurnos / 60.0) AS DECIMAL(5,2));
+
+    -- Validar que haya al menos 8 horas entre inicio y fin
+    IF @duracionCalculada < @minHorasDuracion
+    BEGIN
+        SET @errorMessage = 'Error: El turno debe tener una duración de al menos ' + 
+                           CAST(@minHorasDuracion AS VARCHAR(5)) + 
+                           ' horas entre la hora de inicio y fin.';
+        RAISERROR(@errorMessage, 16, 1);
+        RETURN -2;
+    END
+
+    -- Validar que la duración proporcionada sea correcta con un margen de error de 0.1 horas (6 minutos)
+    IF ABS(@duracionHoras - @duracionCalculada) > 0.1
+    BEGIN
+        SET @errorMessage = 'Error: La duración proporcionada (' + 
+                           CAST(@duracionHoras AS VARCHAR(10)) + 
+                           ' horas) no coincide con el cálculo entre la hora de inicio y fin (' + 
+                           CAST(@duracionCalculada AS VARCHAR(10)) + ' horas).';
+        RAISERROR(@errorMessage, 16, 1);
+        RETURN -3;
+    END
+
+    BEGIN TRY
+        -- Generar nuevo ID para el turno
+        SET @idTurno = NEWID();
+        
+        -- Insertar el nuevo turno
+        INSERT INTO [dbo].[Turnos]
+        (idTurno, descripcion, horaInicio, horaFin, duracionHoras, activo)
+    VALUES
+        (@idTurno, @descripcion, @horaInicio, @horaFin, @duracionHoras, @activo);
+            
+        -- Retornar el ID del turno creado
+        SELECT @idTurno AS idTurno;
+        
+        RETURN 0; -- Éxito
+    END TRY
+    BEGIN CATCH
+        SET @errorMessage = 'Error al guardar el turno: ' + ERROR_MESSAGE();
+        RAISERROR(@errorMessage, 16, 1);
+        RETURN -100; -- Error general de base de datos
+    END CATCH
+END;
 
 /* -------------------------------------------------- */
 /* -------------------------------------------------- */
