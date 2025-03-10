@@ -100,17 +100,39 @@ if (isset($_GET['band'])) {
     }
 
     if ($_GET['band'] == 'get_Usuarios') {
-        $Usuario = $list_record['Usuario'];
-        $sql = "SELECT idUsuario,NombreUsuarioLargo FROM Usuarios WHERE habilitado=1";
+        // Verificar si se proporcionó un texto de búsqueda
+        $texto_busqueda = isset($list_record['texto']) ? $list_record['texto'] : '';
+
+        // Construir la consulta SQL base
+        $sql = "SELECT TOP 10 idUsuario, NombreCompleto, Identificacion, Cargo 
+            FROM testTraz2.dbo.vUsuariosAppBiometrico";
+
+        // Si se proporciona un texto de búsqueda, agregar filtro
+        if (!empty($texto_busqueda)) {
+            $sql .= " WHERE NombreCompleto LIKE '%$texto_busqueda%' 
+                  OR Identificacion LIKE '%$texto_busqueda%'
+                  OR Cargo LIKE '%$texto_busqueda%'";
+        }
+
+        // Ordenar por nombre para mostrar resultados consistentes
+        $sql .= " ORDER BY NombreCompleto";
+
         $res = sqlsrv_query($conn, $sql);
         $data = [];
+
         while ($aa = sqlsrv_fetch_array($res)) {
             $idUsuario = ENCR::encript($aa['idUsuario']);
-            $Nombre = utf8_encode($aa['NombreUsuarioLargo']);
-            $registro = array('id' => $idUsuario, 'name' => $Nombre);
+            $Nombre = utf8_encode($aa['NombreCompleto']);
+            $registro = array(
+                'id' => $idUsuario,
+                'nombre' => $Nombre,
+                'cedula' => $aa['Identificacion'],
+                'cargo' => $aa['Cargo']
+            );
             array_push($data, $registro);
         }
-        $json = (json_encode($data));
+
+        $json = json_encode($data);
     }
 
     if ($_GET['band'] == 'list_UsuarioConsulta_actividad') {
@@ -639,7 +661,7 @@ if (isset($_GET['band'])) {
     }
 
     if ($_GET['band'] == 'cargar_turnos') {
-        $sql = "SELECT * FROM testTraz.dbo.turnos";
+        $sql = "SELECT * FROM testTraz2.dbo.turnos";
         $res = sqlsrv_query($conn, $sql);
         $data = [];
         while ($aa = sqlsrv_fetch_array($res)) {
@@ -647,7 +669,7 @@ if (isset($_GET['band'])) {
             $Nombre = $aa['descripcion'];
             $horaInicio = substr(date_format($aa['horaInicio'], 'H:i:s'), 0, 5);
             $horaFin = substr(date_format($aa['horaFin'], 'H:i:s'), 0, 5);
-            $duracion = sprintf('%02d:%02d', floor($aa['duracionHoras']), round(($aa['duracionHoras']-floor($aa['duracionHoras']))*60));
+            $duracion = sprintf('%02d:%02d', floor($aa['duracionHoras']), round(($aa['duracionHoras'] - floor($aa['duracionHoras'])) * 60));
             $registro = array('id' => $consecutivo, 'name' => $Nombre, 'horaInicio' => $horaInicio, 'horaFin' => $horaFin, 'duracion' => $duracion);
             array_push($data, $registro);
         }
@@ -1432,6 +1454,61 @@ if (isset($_GET['band'])) {
             $json = (json_encode($data));
         } else
             $json = $bandera;
+    }
+
+    if ($_GET['band'] == 'save_turno') {
+        // Obtener los datos del formulario enviados por AJAX
+        $Nombre_turno = $list_record['Nombre_turno'];
+        $FechaInicial_turno = $list_record['FechaInicial_turno'];
+        $FechaFinal_turno = $list_record['FechaFinal_turno'];
+        $Duracion_turno = $list_record['Duracion_turno'];
+        $idusuario = $list_record['idusuario']; // ID del usuario que registra
+
+        // Convertir duración de formato HH:MM a decimal para la base de datos
+        $partes = explode(':', $Duracion_turno);
+        $horas = intval($partes[0]);
+        $minutos = intval($partes[1]);
+        $duracionHoras = $horas + ($minutos / 60);
+        $duracionHorasRedondeada = round($duracionHoras, 2);
+
+        try {
+            // Preparar y ejecutar el procedimiento almacenado
+            $sql = "EXEC testTraz2.dbo.SAVE_Turnos 
+                @descripcion = ?, 
+                @horaInicio = ?, 
+                @horaFin = ?, 
+                @duracionHoras = ?,
+                @idUsuario = ?";
+
+            $params = array(
+                $Nombre_turno,
+                $FechaInicial_turno,
+                $FechaFinal_turno,
+                $duracionHorasRedondeada,
+                $idusuario
+            );
+
+            $stmt = sqlsrv_prepare($conn, $sql, $params);
+
+            if (sqlsrv_execute($stmt)) {
+                // Éxito al ejecutar el procedimiento
+                $json = 0; // Éxito
+            } else {
+                // Error al ejecutar el procedimiento
+                $errors = sqlsrv_errors();
+                // Código de error específico
+                if (strpos($errors[0]['message'], 'duración mínima') !== false) {
+                    $json = 1; // Error de duración mínima
+                } else if (strpos($errors[0]['message'], 'duración proporcionada') !== false) {
+                    $json = 2; // Error en cálculo de duración
+                } else {
+                    $json = 3; // Error general
+                }
+            }
+        } catch (Exception $e) {
+            $json = 3; // Error general
+
+        }
     }
 
     if ($_GET['band'] == 'get_asignar_turno') {

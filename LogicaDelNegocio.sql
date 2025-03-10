@@ -7,15 +7,17 @@ CREATE TABLE [dbo].[UsuariosBiometrico]
     [TipoDocumento] [VARCHAR](10) NULL,
     [Identificacion] [VARCHAR](15) NOT NULL,
     [NombreCompleto] [VARCHAR](100) NOT NULL,
-    [Identificador] [VARCHAR](50) NULL
+    [Cargo] [VARCHAR](50) NULL,
+    [Identificador] [VARCHAR](50) NULL,
+    Habilitado [BIT] NOT NULL DEFAULT 1
 
         CONSTRAINT [PK_UsuariosBiometrico]
 PRIMARY KEY CLUSTERED
-(
+    (
         [idUsuario] ASC
     )
-WITH
-(PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+    WITH
+    (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
 ) ON [PRIMARY]
 GO
 
@@ -36,17 +38,25 @@ AS
             ub.idUsuario,
             ub.NombreCompleto,
             ub.Identificacion,
-            'Biométrico' AS Origen
+            ub.Cargo,
+            'Biométrico'
+AS Origen
         FROM
             [dbo].[UsuariosBiometrico] ub
+        WHERE
+            ub.Habilitado = 1
     UNION ALL
         SELECT
             ud.idUsuario,
             ud.NombreCompleto,
             ud.Identificacion,
+            ud.Cargo,
             'Trazapp' AS Origen
         FROM
             [dbo].[UsuariosDetalle] ud
+            INNER JOIN [dbo].[Usuarios] u ON ud.idUsuario = u.idUsuario
+        WHERE
+            u.Habilitado = 1
 GO
 
 
@@ -121,9 +131,12 @@ CREATE TABLE [dbo].[Turnos]
     [horaInicio] [TIME](7) NOT NULL,
     [horaFin] [TIME](7) NOT NULL,
     [duracionHoras] [DECIMAL](5,2) NOT NULL,
+    [idUsuarioCreador] UNIQUEIDENTIFIER,
+    -- Nuevo parámetro
     [activo] [BIT] NOT NULL DEFAULT 1,
 
-    CONSTRAINT [PK_Turnos] PRIMARY KEY CLUSTERED ([idTurno] ASC)
+    CONSTRAINT [PK_Turnos] PRIMARY KEY CLUSTERED
+    ([idTurno] ASC)
 )
 
 CREATE OR ALTER PROCEDURE [dbo].[SAVE_Turnos]
@@ -131,7 +144,9 @@ CREATE OR ALTER PROCEDURE [dbo].[SAVE_Turnos]
     @horaInicio TIME(7),
     @horaFin TIME(7),
     @duracionHoras DECIMAL(5,2),
-    @activo BIT = 1
+    @activo BIT = 1,
+    @idUsuario UNIQUEIDENTIFIER
+-- Nuevo parámetro agregado
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -144,11 +159,28 @@ BEGIN
     -- Mínimo 8 horas entre inicio y fin
 
     -- Validar que los datos no sean nulos
-    IF @descripcion IS NULL OR @horaInicio IS NULL OR @horaFin IS NULL OR @duracionHoras IS NULL
+    IF @descripcion IS NULL OR @horaInicio IS NULL OR @horaFin IS NULL OR @duracionHoras IS NULL OR @idUsuario IS NULL
     BEGIN
-        SET @errorMessage = 'La descripción, hora de inicio, hora de fin y duración son campos obligatorios.';
+        SET @errorMessage = 'La descripción, hora de inicio, hora de fin, duración y usuario son campos obligatorios.';
         RAISERROR(@errorMessage, 16, 1);
         RETURN -1;
+    END
+
+
+    -- Verificar si ya existe un turno con el mismo horario
+    IF EXISTS (
+        SELECT 1
+    FROM [dbo].[Turnos]
+    WHERE horaInicio = @horaInicio
+        AND horaFin = @horaFin
+        AND activo = 1
+    )
+    BEGIN
+        SET @errorMessage = 'Error: Ya existe un turno activo con el mismo horario de ' + 
+                           CAST(@horaInicio AS VARCHAR(8)) + ' a ' + CAST(@horaFin AS VARCHAR(8));
+        RAISERROR(@errorMessage, 16, 1);
+        RETURN -4;
+    -- Nuevo código de error para turnos duplicados
     END
 
     -- Calcular los minutos entre la hora de inicio y fin
@@ -186,11 +218,11 @@ BEGIN
         -- Generar nuevo ID para el turno
         SET @idTurno = NEWID();
         
-        -- Insertar el nuevo turno
+        -- Insertar el nuevo turno incluyendo idUsuario
         INSERT INTO [dbo].[Turnos]
-        (idTurno, descripcion, horaInicio, horaFin, duracionHoras, activo)
+        (idTurno, descripcion, horaInicio, horaFin, duracionHoras, activo, idUsuarioCreador)
     VALUES
-        (@idTurno, @descripcion, @horaInicio, @horaFin, @duracionHoras, @activo);
+        (@idTurno, @descripcion, @horaInicio, @horaFin, @duracionHoras, @activo, @idUsuario);
             
         -- Retornar el ID del turno creado
         SELECT @idTurno AS idTurno;

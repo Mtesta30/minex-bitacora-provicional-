@@ -158,7 +158,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                         echo '<a href="#" onClick="cargar_turnos(0); Buscar_actividad(); cargar_turnosAll();" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#crear_t"><span class="glyphicon glyphicon-folder-open" style="color: #5c80c0;"></span> Crear Turnos</a><br>';
                     }
                     if (isset($_SESSION['permisos_todos']['ASIGNAR_TURNOS'])) {
-                        echo '<a href="#" onClick="cargar_turnos(1);" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idTurnos_t"><span class="glyphicon glyphicon-pencil" style="color: #5c80c0;"></span> Asignar Turnos</a>';
+                        echo '<a href="#" onClick="cargar_turnos(1);get_Usuarios();" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idTurnos_t"><span class="glyphicon glyphicon-pencil" style="color: #5c80c0;"></span> Asignar Turnos</a>';
                     }
                     echo '</ul>
                         </li>';
@@ -559,18 +559,18 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                         </div>
                     </div>
                 </div>
-                <div class="container">
+                <!-- <div class="container">
                     <div class="row">
                         <div id="div_tabla_turnos_asignar"></div>
                     </div>
-                </div><br>
+                </div><br> -->
             </div><br>
             <div class="container-fluid" style="border: 1px solid; border-radius: 5px; margin-top: 15px;">
                 <div class="row">
                     <h3 class="col-xs-12">Registro Múltiple de Usuarios</h3>
                     <div class="col-xs-9 col-sm-10 col-md-10 col-lg-10">
                         <label for="buscar_usuarios">Buscar Usuarios:</label>
-                        <input type="text" id="buscar_usuarios" class="form-control" placeholder="Buscar por nombre, cédula o cargo" onkeyup="buscarUsuarios(this.value)">
+                        <input type="text" id="buscar_usuarios" class="form-control" placeholder="Buscar por nombre, cédula o cargo" onkeyup="get_Usuarios(this.value)">
                     </div>
                     <div class="col-xs-3 col-sm-2 col-md-2 col-lg-2" style="margin-top: 25px;">
                         <button type="button" class="btn btn-success" onclick="asignarTurnoMultiple()">

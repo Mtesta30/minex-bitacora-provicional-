@@ -1319,7 +1319,7 @@ async function get_crear_turno() {
 
     let Duracion_turno = document.getElementById("Duracion_turno").value;
 
-    let url = "../modelo/jornada_bitacora.php?band=get_crear_turno";
+    let url = "../modelo/jornada_bitacora.php?band=save_turno";
     let param = {
         FechaInicial_turno: FechaInicial_turno,
         FechaFinal_turno: FechaFinal_turno,
@@ -1331,7 +1331,7 @@ async function get_crear_turno() {
     try {
         let response = await sendRequest(url, data);
         // console.log(response);  
-        if (response != 1) {
+        if (response == 0) {
             alertify.success('Turno creado correctamente');
             cargar_turnosAll();
             document.getElementById('Nombre_turno').value = '';
@@ -1339,7 +1339,7 @@ async function get_crear_turno() {
             document.getElementById('FechaFinal_turno').value = '';
             document.getElementById('Duracion_turno').value = '';
         } else {
-            alertify.error('Horas Invalidas..')
+            alertify.error('Hubo un error al crear el turno');
         }
 
     } catch (error) {
@@ -1347,7 +1347,6 @@ async function get_crear_turno() {
         alertify.error('Error al crear el turno');
     }
 
-    Buscar_detalle_t();
 }
 
 function editarTurno(idTurno) {
@@ -1402,9 +1401,20 @@ function eliminarTurno(idTurno) {
 
 ================================================*/
 
-// Función para buscar usuarios
-function buscarUsuarios(texto) {
-    fetch('../modelo/jornada_bitacora.php?band=buscar_usuarios&texto=' + texto)
+// Variable global para almacenar IDs de usuarios seleccionados
+let usuariosSeleccionados = new Set();
+
+// Función mejorada para buscar usuarios preservando las selecciones
+function get_Usuarios(texto = '') {
+    let param = { texto: texto };
+    let data = JSON.stringify(param);
+    fetch('../modelo/jornada_bitacora.php?band=get_Usuarios', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: data
+    })
         .then(response => response.json())
         .then(data => {
             let tablaUsuarios = document.getElementById('tabla_usuarios_multiple');
@@ -1414,9 +1424,14 @@ function buscarUsuarios(texto) {
                 html = '<tr><td colspan="5" class="text-center">No se encontraron usuarios</td></tr>';
             } else {
                 data.forEach(usuario => {
+                    // Verificar si el usuario ya estaba seleccionado previamente
+                    const estaSeleccionado = usuariosSeleccionados.has(usuario.id);
+
                     html += `<tr>
                             <td class="text-center">
-                                <input type="checkbox" name="usuarios[]" value="${usuario.id}" onchange="actualizarConteo()">
+                                <input type="checkbox" name="usuarios[]" value="${usuario.id}" 
+                                    onchange="actualizarSeleccionUsuario(this)" 
+                                    ${estaSeleccionado ? 'checked' : ''}>
                             </td>
                             <td>${usuario.nombre}</td>
                             <td>${usuario.cedula}</td>
@@ -1426,46 +1441,69 @@ function buscarUsuarios(texto) {
             }
 
             tablaUsuarios.innerHTML = html;
+            actualizarConteo(); // Actualizar el contador
+
+            // Actualizar estado del checkbox "seleccionar todos"
+            actualizarEstadoSeleccionarTodos();
         })
         .catch(error => console.error('Error:', error));
 }
 
-// Función para seleccionar/deseleccionar todos
+// Nueva función para actualizar el Set de usuarios seleccionados
+function actualizarSeleccionUsuario(checkbox) {
+    if (checkbox.checked) {
+        usuariosSeleccionados.add(checkbox.value);
+    } else {
+        usuariosSeleccionados.delete(checkbox.value);
+    }
+    actualizarConteo();
+}
+
+// Función modificada para seleccionar/deseleccionar todos
 function seleccionarTodos() {
     let checkboxes = document.getElementsByName('usuarios[]');
     let seleccionarTodos = document.getElementById('seleccionar_todos').checked;
 
     for (let i = 0; i < checkboxes.length; i++) {
         checkboxes[i].checked = seleccionarTodos;
+
+        if (seleccionarTodos) {
+            usuariosSeleccionados.add(checkboxes[i].value);
+        } else {
+            usuariosSeleccionados.delete(checkboxes[i].value);
+        }
     }
 
     actualizarConteo();
 }
 
-// Función para actualizar el conteo de usuarios seleccionados
-function actualizarConteo() {
+// Función para actualizar el estado del checkbox "seleccionar todos"
+function actualizarEstadoSeleccionarTodos() {
     let checkboxes = document.getElementsByName('usuarios[]');
-    let contador = 0;
+    let todosSeleccionados = true;
+    let ningunSeleccionado = true;
 
     for (let i = 0; i < checkboxes.length; i++) {
-        if (checkboxes[i].checked) contador++;
-    }
-
-    document.getElementById('conteo_seleccionados').innerText = contador;
-}
-
-// Función para asignar turno a múltiples usuarios
-function asignarTurnoMultiple() {
-    let checkboxes = document.getElementsByName('usuarios[]');
-    let usuariosSeleccionados = [];
-
-    for (let i = 0; i < checkboxes.length; i++) {
-        if (checkboxes[i].checked) {
-            usuariosSeleccionados.push(checkboxes[i].value);
+        if (!checkboxes[i].checked) {
+            todosSeleccionados = false;
+        } else {
+            ningunSeleccionado = false;
         }
     }
 
-    if (usuariosSeleccionados.length === 0) {
+    // Actualizar el checkbox "seleccionar todos"
+    document.getElementById('seleccionar_todos').checked = todosSeleccionados;
+    document.getElementById('seleccionar_todos').indeterminate = !todosSeleccionados && !ningunSeleccionado;
+}
+
+// Función modificada para actualizar el conteo
+function actualizarConteo() {
+    document.getElementById('conteo_seleccionados').innerText = usuariosSeleccionados.size;
+}
+
+// Función modificada para asignar turno a múltiples usuarios
+function asignarTurnoMultiple() {
+    if (usuariosSeleccionados.size === 0) {
         alertify.error('Debe seleccionar al menos un usuario');
         return;
     }
@@ -1495,18 +1533,19 @@ function asignarTurnoMultiple() {
             idTurno: idTurno,
             fechaInicio: fechaInicio,
             fechaFin: fechaFin,
-            usuarios: usuariosSeleccionados,
+            usuarios: Array.from(usuariosSeleccionados),
             diasLaborales: diasLaborales
         })
     })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alertify.success('Turnos asignados correctamente a ' + usuariosSeleccionados.length + ' usuarios');
-                // Refrescar la tabla de turnos asignados
-                buscar_asignados(document.getElementById('lista_turnos_a'));
+                alertify.success('Turnos asignados correctamente a ' + usuariosSeleccionados.size + ' usuarios');
+                // Limpiar selecciones después de asignar correctamente
+                usuariosSeleccionados.clear();
+                get_Usuarios('');
             } else {
-                alertify.error('Error al asignar turnos: ' + data.message);
+                alertify.error(data.message || 'Error al asignar turnos');
             }
         })
         .catch(error => {
@@ -1515,6 +1554,16 @@ function asignarTurnoMultiple() {
         });
 }
 
+// Agregar función para limpiar selecciones (botón opcional)
+function limpiarSelecciones() {
+    usuariosSeleccionados.clear();
+    let checkboxes = document.getElementsByName('usuarios[]');
+    for (let i = 0; i < checkboxes.length; i++) {
+        checkboxes[i].checked = false;
+    }
+    document.getElementById('seleccionar_todos').checked = false;
+    actualizarConteo();
+}
 
 
 
