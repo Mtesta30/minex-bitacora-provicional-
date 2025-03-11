@@ -158,7 +158,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                         echo '<a href="#" onClick="cargar_turnos(0); Buscar_actividad(); cargar_turnosAll();" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#crear_t"><span class="glyphicon glyphicon-folder-open" style="color: #5c80c0;"></span> Crear Turnos</a><br>';
                     }
                     if (isset($_SESSION['permisos_todos']['ASIGNAR_TURNOS'])) {
-                        echo '<a href="#" onClick="cargar_turnos(1);get_Usuarios();" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idTurnos_t"><span class="glyphicon glyphicon-pencil" style="color: #5c80c0;"></span> Asignar Turnos</a>';
+                        echo '<a href="#" onClick="cargar_turnos(1);get_Usuarios(); cargarTurnosAsignados();" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idTurnos_t"><span class="glyphicon glyphicon-pencil" style="color: #5c80c0;"></span> Asignar Turnos</a>';
                     }
                     echo '</ul>
                         </li>';
@@ -565,6 +565,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     </div>
                 </div><br> -->
             </div><br>
+            <!-- REGISTRO DE TURNOS -->
             <div class="container-fluid" style="border: 1px solid; border-radius: 5px; margin-top: 15px;">
                 <div class="row">
                     <h3 class="col-xs-12">Registro Múltiple de Usuarios</h3>
@@ -603,26 +604,15 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     </div>
                 </div>
             </div> <br>
-
-            <div class="container-fluid" style="border: 1px solid; border-radius: 5px;">
+            <!-- TURNOS ASIGNADOS -->
+            <div class="container-fluid" style="border: 1px solid; border-radius: 5px; margin-top: 15px;">
                 <div class="row">
-                    <div class="col-xs-2 col-sm-4 col-md-4 col-lg-4">
-                        <label for="idUsuario_asignar">Usuario:</label>
-                        <input type="text" id="idUsuario_asignar" list="list_Usuario_asignar" class="form-control" placeholder="Escriba un Usuario" onchange="get_turnos_user_activo()" onkeyup="list_Usuario_asignar(this)" />
-                        <datalist id="list_Usuario_asignar"></datalist>
-                    </div>
-                    <div class="col-xs-1 col-sm-1 col-md-1 col-lg-1"><br>
-                        <button type="button" id="button__t" class="btn btn-primary" onclick="get_asignar_turno()">Asignar Turno</button>
-                    </div>
+                    <h3 class="col-xs-12">Turnos Asignados por Centro de Trabajo</h3>
                 </div>
-                <div class="container">
-                    <div class="row">
-                        <div id="div_tabla_activos"></div>
-                    </div>
-                </div><br>
-            </div>
-            <div class="table-responsive">
-                <div id="div_tabla_asignados"></div>
+                <div class="table-responsive" id="div_turnos_asignados">
+                    <!-- La tabla se cargará aquí dinámicamente -->
+
+                </div>
             </div><br>
         </div>
 

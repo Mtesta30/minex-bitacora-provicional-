@@ -1216,7 +1216,6 @@ function cargar_turnosAll() {
         .catch(error => console.error('Error:', error));
 }
 
-
 // Función para alternar entre descripción manual y automática
 function toggleDescripcionMode() {
     let checkboxAuto = document.getElementById('descripcion_auto');
@@ -1272,34 +1271,21 @@ function calcularDuracion(horaInicio, horaFin) {
     let horas = Math.floor(difMinutos / 60);
     let minutos = difMinutos % 60;
 
-    // Validar que haya al menos 8 horas entre inicio y fin
-    const MINIMO_HORAS = 8;
-    const MINIMO_MINUTOS = MINIMO_HORAS * 60;
+    // Restablecer el color del borde
+    document.getElementById('FechaInicial_turno').style.borderColor = '#ccc';
+    document.getElementById('FechaFinal_turno').style.borderColor = '#ccc';
 
-    if (difMinutos < MINIMO_MINUTOS) {
-        alertify.error(`Error: El turno debe tener una duración mínima de ${MINIMO_HORAS} horas.`);
-        // Resaltar los campos de hora con borde rojo
-        document.getElementById('FechaInicial_turno').style.borderColor = 'red';
-        document.getElementById('FechaFinal_turno').style.borderColor = 'red';
-        // No actualizar el campo de duración si no cumple con el mínimo
-        return false;
-    } else {
-        // Restablecer el color del borde si es válido
-        document.getElementById('FechaInicial_turno').style.borderColor = '#ccc';
-        document.getElementById('FechaFinal_turno').style.borderColor = '#ccc';
-    }
-
-    // Formatear para el campo duración - siempre actualizar esto si pasa la validación
+    // Formatear para el campo duración
     document.getElementById('Duracion_turno').value =
         `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
 
-    // Generar descripción automática solo si el checkbox está marcado
+    // Generar descripción automática solo si el checkbox está marcado 
     if (document.getElementById('descripcion_auto')?.checked) {
         generarDescripcionAuto();
     }
 
-    return true;
 }
+
 // Funciones para las acciones
 async function get_crear_turno() {
     let FechaInicial_turno = document.getElementById("FechaInicial_turno").value;
@@ -1310,11 +1296,6 @@ async function get_crear_turno() {
     if (!FechaInicial_turno || !FechaFinal_turno || !Nombre_turno) {
         alertify.error("Todos los campos son obligatorios");
         return;
-    }
-
-    // Validar la duración mínima
-    if (!calcularDuracion(FechaInicial_turno, FechaFinal_turno)) {
-        return; // Si no cumple con la duración mínima, detener la ejecución
     }
 
     let Duracion_turno = document.getElementById("Duracion_turno").value;
@@ -1511,6 +1492,7 @@ function asignarTurnoMultiple() {
     let idTurno = document.getElementById('lista_turnos_a').value;
     let fechaInicio = document.getElementById('fecha_ini').value;
     let fechaFin = document.getElementById('fecha_fin').value;
+    let idCentroTrabajo = consulta('CentroTrabajo', 'list_Centrotrabajo');
 
     if (!idTurno || !fechaInicio || !fechaFin) {
         alertify.error('Debe seleccionar un turno y fechas de inicio y fin');
@@ -1523,8 +1505,17 @@ function asignarTurnoMultiple() {
         diasLaborales = diasSeleccionados;
     }
 
+    let usuarios = Array.from(usuariosSeleccionados);
+
+    // Mostrar loader o indicador de carga
+    let btnAsignar = document.querySelector('button[onclick="asignarTurnoMultiple()"]');
+    if (btnAsignar) {
+        btnAsignar.disabled = true;
+        btnAsignar.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Procesando...';
+    }
+
     // Enviar datos para asignación múltiple
-    fetch('../modelo/jornada_bitacora.php?band=asignar_turno_multiple', {
+    fetch('../modelo/jornada_bitacora.php?band=save_programacion_turnos', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -1533,25 +1524,69 @@ function asignarTurnoMultiple() {
             idTurno: idTurno,
             fechaInicio: fechaInicio,
             fechaFin: fechaFin,
-            usuarios: Array.from(usuariosSeleccionados),
-            diasLaborales: diasLaborales
+            usuarios: usuarios,
+            idCentroTrabajo: idCentroTrabajo,
+            diasLaborales: diasLaborales,
+            idUsuario: '22954799-f18d-4b80-aae2-6868cf053354'
         })
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alertify.success('Turnos asignados correctamente a ' + usuariosSeleccionados.size + ' usuarios');
-                // Limpiar selecciones después de asignar correctamente
+    }).then(response => {
+        if (!response.ok) {
+            throw new Error('Error en la conexión con el servidor');
+        }
+        return response.json();
+    }).then(data => {
+        // Restaurar el botón
+        if (btnAsignar) {
+            btnAsignar.disabled = false;
+            btnAsignar.innerHTML = 'Asignar Turnos';
+        }
+
+        // Respuesta según el formato de respuestaExito() o respuestaError()
+        if (data && data.success === true) {
+            // Extraer información relevante
+            const exitosos = data.data && data.data.exitosos ? data.data.exitosos : 0;
+            const fallidos = data.data && data.data.fallidos ? data.data.fallidos : 0;
+
+            // Mostrar mensaje de éxito
+            alertify.success(data.message || `Turnos asignados correctamente a ${exitosos} usuarios`);
+
+            // Limpiar selecciones solo si hubo asignaciones exitosas
+            if (exitosos > 0) {
                 usuariosSeleccionados.clear();
                 get_Usuarios('');
-            } else {
-                alertify.error(data.message || 'Error al asignar turnos');
+
+                // Actualizar otras partes de la interfaz si es necesario
+                if (typeof Buscar_detalle_tt === 'function') Buscar_detalle_tt();
+                if (typeof buscar_asignados === 'function') buscar_asignados();
             }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alertify.error('Error al asignar turnos');
-        });
+
+            // Si hay información detallada de errores, mostrarla
+            if (fallidos > 0 && data.data && data.data.resultados) {
+                console.group('Detalles de usuarios con errores:');
+                data.data.resultados.filter(r => !r.success).forEach(resultado => {
+                    console.log(`Usuario ${resultado.idUsuario}: ${resultado.message}`);
+                });
+                console.groupEnd();
+            }
+        } else {
+            // Respuesta de error
+            alertify.error(data.message || 'Error al asignar turnos');
+
+            // Mostrar detalles adicionales si existen
+            if (data.data && typeof data.data === 'object') {
+                console.error('Detalles del error:', data.data);
+            }
+        }
+    }).catch(error => {
+        // Restaurar el botón
+        if (btnAsignar) {
+            btnAsignar.disabled = false;
+            btnAsignar.innerHTML = 'Asignar Turnos';
+        }
+
+        console.error('Error:', error);
+        alertify.error('Error al comunicarse con el servidor. Por favor, inténtelo de nuevo.');
+    });
 }
 
 // Agregar función para limpiar selecciones (botón opcional)
@@ -1565,8 +1600,265 @@ function limpiarSelecciones() {
     actualizarConteo();
 }
 
+async function cargarTurnosAsignados() {
+    try {
+        // Mostrar indicador de carga
+        document.getElementById('div_turnos_asignados').innerHTML =
+            '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><p>Cargando turnos asignados...</p></div>';
+
+        // ID de centro de trabajo genérico (se puede cambiar por uno real más adelante)
+        const idCentroTrabajoGenerico = 'bW9BRTgwS2hNNUd4QXd6Zm53cDhSWFJUUnM3ZGhFRzBlYytUMm1CdU94V2VHS3hHQkgxQXhpK2hEb0syRDdCdw==';
+
+        // Realizar la petición al servidor
+        const response = await fetch('../modelo/jornada_bitacora.php?band=get_turnos_asignados', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                idCentroTrabajo: idCentroTrabajoGenerico
+            })
+        });
+
+        const data = await response.json();
+
+        // Verificar si la respuesta fue exitosa
+        if (data.success) {
+            // Construir la tabla con los datos recibidos
+            let html = `
+                <table id="tabla_turnos_asignados" class="table table-striped table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th class="text-center">Nombre</th>
+                            <th class="text-center">Cédula</th>
+                            <th class="text-center">Cargo</th>
+                            <th class="text-center">Fecha Inicio</th>
+                            <th class="text-center">Fecha Fin</th>
+                            <th class="text-center">Hora Inicio</th>
+                            <th class="text-center">Hora Fin</th>
+                            <th class="text-center">Duración</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+            // Verificar si hay datos
+            if (data.data && data.data.length > 0) {
+                // Agregar filas con datos
+                data.data.forEach(item => {
+                    html += `<tr>
+                        <td>${item.nombre || ''}</td>
+                        <td>${item.cedula || ''}</td>
+                        <td>${item.cargo || ''}</td>
+                        <td>${item.fechaInicio || ''}</td>
+                        <td>${item.fechaFin || ''}</td>
+                        <td>${item.horaInicio || ''}</td>
+                        <td>${item.horaFin || ''}</td>
+                        <td>${item.duracion || ''}</td>
+                        <td class="text-center">
+                            <button class="btn btn-warning btn-sm" onclick="editarProgramacionTurno('${item.idProgramacion}')" title="Editar turno">
+                                <span class="glyphicon glyphicon-pencil"></span>
+                            </button>
+                            <button class="btn btn-danger btn-sm" onclick="eliminarProgramacionTurno('${item.idProgramacion}')" title="Eliminar turno">
+                                <span class="glyphicon glyphicon-trash"></span>
+                            </button>
+                        </td>
+                    </tr>`;
+                });
+            } else {
+                // Mensaje si no hay datos
+                html += `<tr><td colspan="9" class="text-center">No hay turnos asignados para mostrar</td></tr>`;
+            }
+
+            html += `</tbody></table>`;
+
+            // Actualizar el contenedor con la tabla
+            document.getElementById('div_turnos_asignados').innerHTML = html;
+
+            // Inicializar DataTable para la tabla
+            $('#tabla_turnos_asignados').DataTable({
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/9dcbecd42ad/i18n/Spanish.json"
+                },
+                "ordering": true,
+                "searching": true,
+                "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "Todos"]],
+                "pageLength": 10,
+                dom: 'Bfrtip',
+                buttons: [
+                    'excel', 'pdf'
+                ]
+            });
+        } else {
+            // Mostrar mensaje de error
+            document.getElementById('div_turnos_asignados').innerHTML =
+                `<div class="alert alert-danger">${data.message || 'Error al cargar los turnos asignados'}</div>`;
+        }
+    } catch (error) {
+        console.error('Error al cargar turnos asignados:', error);
+        document.getElementById('div_turnos_asignados').innerHTML = '<div class="alert alert-danger">Error al cargar los turnos asignados. Por favor intente nuevamente.</div>';
+    }
+}
 
 
+// Función para eliminar programación de turno
+async function eliminarProgramacionTurno(idProgramacion) {
+    if (!idProgramacion) {
+        alertify.error('ID de programación no válido');
+        return;
+    }
+
+    // Confirmar antes de eliminar
+    const confirmar = await new Promise(resolve => {
+        alertify.confirm('Eliminar Turno', '¿Está seguro que desea eliminar esta programación de turno?',
+            () => resolve(true),
+            () => resolve(false)
+        ).set('labels', { ok: 'Eliminar', cancel: 'Cancelar' });
+    });
+
+    if (!confirmar) return;
+
+    try {
+        // Mostrar indicador de carga
+        alertify.message('Procesando solicitud...');
+
+        const response = await fetch('../modelo/jornada_bitacora.php?band=delete_programacion_turno', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ idProgramacion: idProgramacion })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alertify.success(data.message || 'Turno eliminado correctamente');
+            // Recargar la tabla para reflejar los cambios
+            cargarTurnosAsignados();
+        } else {
+            alertify.error(data.message || 'Error al eliminar el turno');
+            console.error('Error al eliminar:', data);
+        }
+    } catch (error) {
+        console.error('Error al comunicarse con el servidor:', error);
+        alertify.error('Error al comunicarse con el servidor. Por favor, inténtelo de nuevo.');
+    }
+}
+
+// Función para editar programación de turno
+async function editarProgramacionTurno(idProgramacion) {
+    if (!idProgramacion) {
+        alertify.error('ID de programación no válido');
+        return;
+    }
+
+    try {
+        // Mostrar indicador de carga
+        document.getElementById('div_editar_turno') && (document.getElementById('div_editar_turno').innerHTML =
+            '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><p>Cargando información del turno...</p></div>');
+
+        // Obtener los detalles de la programación
+        const response = await fetch('../modelo/jornada_bitacora.php?band=get_programacion_turno', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ idProgramacion: idProgramacion })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Mostrar modal con los datos para editar
+            mostrarModalEdicion(data.data);
+        } else {
+            alertify.error(data.message || 'Error al cargar la información del turno');
+            console.error('Error al cargar la información:', data);
+        }
+    } catch (error) {
+        console.error('Error al comunicarse con el servidor:', error);
+        alertify.error('Error al comunicarse con el servidor. Por favor, inténtelo de nuevo.');
+    }
+}
+
+// Función para mostrar modal de edición con los datos cargados
+function mostrarModalEdicion(programacion) {
+    // Aquí implementarías la lógica para mostrar un modal con los datos de la programación
+    // Como ejemplo, podrías usar Bootstrap modal o tu propia implementación
+
+    // Ejemplo si tienes un modal de Bootstrap con id="modalEditarTurno"
+
+    // Rellenar el formulario con los datos
+    document.getElementById('edit_idProgramacion').value = programacion.idProgramacion;
+    document.getElementById('edit_fechaInicio').value = programacion.fechaInicio;
+    document.getElementById('edit_fechaFin').value = programacion.fechaFin;
+
+    // Si tienes un campo para mostrar el nombre del usuario
+    document.getElementById('edit_nombreUsuario').value = programacion.nombreUsuario;
+    document.getElementById('edit_nombreUsuario').disabled = true; // No permitir edición
+
+    // Para un campo select de centro de trabajo, buscar la opción correcta
+    const selectCentro = document.getElementById('edit_idCentroTrabajo');
+    for (let i = 0; i < selectCentro.options.length; i++) {
+        if (selectCentro.options[i].getAttribute('data-id') === programacion.idCentroTrabajo) {
+            selectCentro.selectedIndex = i;
+            break;
+        }
+    }
+
+    // Mostrar el modal
+    $('#modalEditarTurno').modal('show');
+}
+
+// Función para guardar los cambios de la programación
+async function guardarCambiosProgramacion() {
+    // Obtener los valores del formulario
+    const idProgramacion = document.getElementById('edit_idProgramacion').value;
+    const fechaInicio = document.getElementById('edit_fechaInicio').value;
+    const fechaFin = document.getElementById('edit_fechaFin').value;
+    const idCentroTrabajo = consulta('edit_idCentroTrabajo', 'list_CentroTrabajoEdit');
+
+    // Validar datos
+    if (!fechaInicio || !fechaFin || !idCentroTrabajo) {
+        alertify.error('Por favor complete todos los campos obligatorios');
+        return;
+    }
+
+    try {
+        // Mostrar indicador de carga
+        alertify.message('Guardando cambios...');
+
+        const response = await fetch('../modelo/jornada_bitacora.php?band=update_programacion_turno', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                idProgramacion: idProgramacion,
+                fechaInicio: fechaInicio,
+                fechaFin: fechaFin,
+                idCentroTrabajo: idCentroTrabajo
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alertify.success(data.message || 'Cambios guardados correctamente');
+            // Cerrar el modal
+            $('#modalEditarTurno').modal('hide');
+            // Recargar la tabla para reflejar los cambios
+            cargarTurnosAsignados();
+        } else {
+            alertify.error(data.message || 'Error al guardar los cambios');
+            console.error('Error al guardar:', data);
+        }
+    } catch (error) {
+        console.error('Error al comunicarse con el servidor:', error);
+        alertify.error('Error al comunicarse con el servidor. Por favor, inténtelo de nuevo.');
+    }
+}
 
 
 async function delete_Turnos_asignado(id) {

@@ -146,7 +146,6 @@ CREATE OR ALTER PROCEDURE [dbo].[SAVE_Turnos]
     @duracionHoras DECIMAL(5,2),
     @activo BIT = 1,
     @idUsuario UNIQUEIDENTIFIER
--- Nuevo parámetro agregado
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -155,8 +154,6 @@ BEGIN
     DECLARE @duracionCalculada DECIMAL(5,2);
     DECLARE @minutosEntreTurnos INT;
     DECLARE @errorMessage NVARCHAR(255);
-    DECLARE @minHorasDuracion DECIMAL(5,2) = 8.00;
-    -- Mínimo 8 horas entre inicio y fin
 
     -- Validar que los datos no sean nulos
     IF @descripcion IS NULL OR @horaInicio IS NULL OR @horaFin IS NULL OR @duracionHoras IS NULL OR @idUsuario IS NULL
@@ -165,7 +162,6 @@ BEGIN
         RAISERROR(@errorMessage, 16, 1);
         RETURN -1;
     END
-
 
     -- Verificar si ya existe un turno con el mismo horario
     IF EXISTS (
@@ -180,7 +176,6 @@ BEGIN
                            CAST(@horaInicio AS VARCHAR(8)) + ' a ' + CAST(@horaFin AS VARCHAR(8));
         RAISERROR(@errorMessage, 16, 1);
         RETURN -4;
-    -- Nuevo código de error para turnos duplicados
     END
 
     -- Calcular los minutos entre la hora de inicio y fin
@@ -192,16 +187,6 @@ BEGIN
 
     -- Convertir minutos a horas decimales para comparar con @duracionHoras
     SET @duracionCalculada = CAST((@minutosEntreTurnos / 60.0) AS DECIMAL(5,2));
-
-    -- Validar que haya al menos 8 horas entre inicio y fin
-    IF @duracionCalculada < @minHorasDuracion
-    BEGIN
-        SET @errorMessage = 'Error: El turno debe tener una duración de al menos ' + 
-                           CAST(@minHorasDuracion AS VARCHAR(5)) + 
-                           ' horas entre la hora de inicio y fin.';
-        RAISERROR(@errorMessage, 16, 1);
-        RETURN -2;
-    END
 
     -- Validar que la duración proporcionada sea correcta con un margen de error de 0.1 horas (6 minutos)
     IF ABS(@duracionHoras - @duracionCalculada) > 0.1
@@ -251,10 +236,10 @@ CREATE TABLE [dbo].[ProgramacionTurnos]
     [activo] [BIT] NOT NULL DEFAULT 1,
 
     CONSTRAINT [PK_ProgramacionTurnos] PRIMARY KEY CLUSTERED ([idProgramacion] ASC),
-    CONSTRAINT [FK_ProgramacionTurnos_UsuariosBiometrico] FOREIGN KEY ([idUsuario]) 
-        REFERENCES [dbo].[UsuariosBiometrico] ([idUsuario]),
-    CONSTRAINT [FK_ProgramacionTurnos_Destino] FOREIGN KEY ([idCentroTrabajo]) 
-        REFERENCES [dbo].[Destino] ([idDestino])
+    CONSTRAINT [FK_ProgramacionTurnos_Destino] FOREIGN KEY
+    ([idCentroTrabajo]) 
+        REFERENCES [dbo].[Destino]
+    ([idDestino])
 )
 
 /* -------------------------------------------------- */
@@ -274,6 +259,59 @@ CREATE TABLE [dbo].[ProgramacionTurnosDetalle]
         REFERENCES [dbo].[Turnos] ([idTurno])
 )
 
+
+CREATE VIEW vAsignacionTurnosUsuario
+AS
+    SELECT
+        -- Información del usuario
+        vua.NombreCompleto,
+        vua.Identificacion,
+        vua.Cargo,
+
+        -- Información del turno
+        pt.fechaInicio,
+        pt.fechaFin,
+
+        -- Información del horario del turno
+        t.descripcion,
+        FORMAT(CAST(t.horaInicio AS DATETIME), 'HH:mm') AS 'horaInicio',
+        FORMAT(CAST(t.horaFin AS DATETIME), 'HH:mm') AS 'horaFin',
+
+        -- Formato de duración en horas y minutos
+        RIGHT('00' + CAST(FLOOR(t.duracionHoras) AS VARCHAR), 2) + ':' + 
+    RIGHT('00' + CAST(FLOOR((t.duracionHoras - FLOOR(t.duracionHoras)) * 60) AS VARCHAR), 2) AS 'duracion',
+
+        -- Información del centro de trabajo
+        d.Descripcion AS 'CentroTrabajo',
+
+        -- IDs originales para referencias o filtros adicionales
+        pt.idProgramacion,
+        pt.idUsuario,
+        pt.idCentroTrabajo,
+        t.idTurno
+
+    FROM
+        -- Tabla principal de programación de turnos
+        ProgramacionTurnos pt
+
+        -- Unión con detalles de programación para obtener el turno asignado
+        INNER JOIN ProgramacionTurnosDetalle ptd ON pt.idProgramacion = ptd.idProgramacion
+
+        -- Unión con la tabla de turnos para obtener información del horario
+        INNER JOIN Turnos t ON ptd.idTurno = t.idTurno
+
+        -- Unión con vista de usuarios para obtener información personal
+        INNER JOIN vUsuariosAppBiometrico vua ON pt.idUsuario = vua.idUsuario
+
+        -- Unión con tabla destino (centros de trabajo)
+        INNER JOIN Destino d ON pt.idCentroTrabajo = d.idDestino
+
+    WHERE 
+    pt.activo = 1
+
+-- No se puede usar GROUP BY en una vista con funciones de agregación sin una función de agregación
+-- En su lugar, puedes usar DISTINCT o manejar la agrupación en la consulta que utilice la vista
+GO
 
 /* -------------------------------------------------- */
 /* Procedimientos */

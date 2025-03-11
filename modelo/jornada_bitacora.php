@@ -8,7 +8,53 @@ $post_data = file_get_contents('php://input');
 $list_record = json_decode($post_data, true);
 $params = array();
 $options = array("Scrollable" => SQLSRV_CURSOR_KEYSET);
+$json = '';
+
+// Añade esta función de log al principio del archivo, justo después de incluir las librerías
+function log_debug($mensaje, $datos = null)
+{
+    $archivo_log = __DIR__ . '/debug_turnos_asignados.log';
+    $tiempo = date('Y-m-d H:i:s');
+    $log_mensaje = "[$tiempo] $mensaje";
+
+    if ($datos !== null) {
+        if (is_array($datos) || is_object($datos)) {
+            $log_mensaje .= "\nDatos: " . print_r($datos, true);
+        } else {
+            $log_mensaje .= "\nDatos: $datos";
+        }
+    }
+
+    $log_mensaje .= "\n" . str_repeat('-', 80) . "\n";
+    file_put_contents($archivo_log, $log_mensaje, FILE_APPEND);
+}
+
+
+function respuestaExito($data, $message = 'Operación realizada correctamente')
+{
+    return json_encode(array(
+        'success' => true,
+        'message' => $message,
+        'data' => $data
+    ));
+}
+
+function respuestaError($message, $errors = null)
+{
+    $response = array(
+        'success' => false,
+        'message' => $message
+    );
+    if ($errors) {
+        $response['errors'] = $errors;
+    }
+    return json_encode($response);
+}
+
+
 if (isset($_GET['band'])) {
+
+    // $json = '';
 
     if ($_GET['band'] == 'get_ConsultaMina') {
         $CentroTrabajo = $list_record['CentroTrabajo'];
@@ -1547,6 +1593,322 @@ if (isset($_GET['band'])) {
             $json = (json_encode($data));*
         }else  */
         $json = $sql;
+    }
+
+    if ($_GET['band'] == 'save_programacion_turnos') {
+        try {
+            // Recibir los datos enviados en formato JSON y procesarlos usando list_record
+            $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? ENCR::descript($list_record['idCentroTrabajo']) : null;
+            $idTurno = $list_record['idTurno'];
+            $fechaInicio = $list_record['fechaInicio'];
+            $fechaFin = $list_record['fechaFin'];
+            $diasLaborales = isset($list_record['diasLaborales']) ? $list_record['diasLaborales'] : array();
+            $usuarios = $list_record['usuarios'];
+            $idUsuarioRegistra = $list_record['idUsuario'];
+
+            // Variables para almacenar resultados
+            $resultados = array();
+            $exitosos = 0;
+            $fallidos = 0;
+
+            // Configurar los días de la semana para el procedimiento almacenado
+            $idTurnoLunes = null;
+            $idTurnoMartes = null;
+            $idTurnoMiercoles = null;
+            $idTurnoJueves = null;
+            $idTurnoViernes = null;
+            $idTurnoSabado = null;
+            $idTurnoDomingo = null;
+            $idTurnoDefault = null;
+
+            // Si no se especificaron días, usar el turno para todos los días (idTurnoDefault)
+            if (empty($diasLaborales)) {
+                $idTurnoDefault = $idTurno;
+            } else {
+                // Si se especificaron días, asignar el turno a esos días específicos
+                foreach ($diasLaborales as $dia) {
+                    switch ($dia) {
+                        case 'lunes':
+                            $idTurnoLunes = $idTurno;
+                            break;
+                        case 'martes':
+                            $idTurnoMartes = $idTurno;
+                            break;
+                        case 'miércoles':
+                            $idTurnoMiercoles = $idTurno;
+                            break;
+                        case 'jueves':
+                            $idTurnoJueves = $idTurno;
+                            break;
+                        case 'viernes':
+                            $idTurnoViernes = $idTurno;
+                            break;
+                        case 'sábado':
+                            $idTurnoSabado = $idTurno;
+                            break;
+                        case 'domingo':
+                            $idTurnoDomingo = $idTurno;
+                            break;
+                    }
+                }
+            }
+
+            // Procesar cada usuario seleccionado
+            foreach ($usuarios as $idUsuarioEncriptado) {
+                try {
+                    // Desencriptar el ID del usuario
+                    $idUsuario = ENCR::descript($idUsuarioEncriptado);
+
+                    // Ejecutar el procedimiento almacenado para asignar el turno al usuario
+                    $sql = "EXEC testTraz2.dbo.SAVE_ProgramacionTurnos 
+                    @idUsuario = ?, 
+                    @idCentroTrabajo = ?, 
+                    @fechaInicio = ?, 
+                    @fechaFin = ?, 
+                    @idUsuarioRegistra = ?, 
+                    @idTurnoLunes = ?, 
+                    @idTurnoMartes = ?, 
+                    @idTurnoMiercoles = ?, 
+                    @idTurnoJueves = ?, 
+                    @idTurnoViernes = ?, 
+                    @idTurnoSabado = ?, 
+                    @idTurnoDomingo = ?, 
+                    @idTurnoDefault = ?";
+
+                    $params = array(
+                        $idUsuario,
+                        $idCentroTrabajo,
+                        $fechaInicio,
+                        $fechaFin,
+                        $idUsuarioRegistra,
+                        $idTurnoLunes,
+                        $idTurnoMartes,
+                        $idTurnoMiercoles,
+                        $idTurnoJueves,
+                        $idTurnoViernes,
+                        $idTurnoSabado,
+                        $idTurnoDomingo,
+                        $idTurnoDefault
+                    );
+
+                    $stmt = sqlsrv_prepare($conn, $sql, $params);
+
+                    if ($stmt === false) {
+                        $errors = sqlsrv_errors();
+                        $resultados[] = array(
+                            'idUsuario' => $idUsuarioEncriptado,
+                            'success' => false,
+                            'message' => 'Error en la preparación: ' . $errors[0]['message']
+                        );
+                        $fallidos++;
+                    } else {
+                        $result = sqlsrv_execute($stmt);
+
+                        if ($result === false) {
+                            $errors = sqlsrv_errors();
+                            $resultados[] = array(
+                                'idUsuario' => $idUsuarioEncriptado,
+                                'success' => false,
+                                'message' => 'Error en la ejecución: ' . $errors[0]['message']
+                            );
+                            $fallidos++;
+                        } else {
+                            $resultados[] = array(
+                                'idUsuario' => $idUsuarioEncriptado,
+                                'success' => true,
+                                'message' => 'Turno asignado correctamente'
+                            );
+                            $exitosos++;
+                        }
+                    }
+                } catch (Exception $e) {
+                    $resultados[] = array(
+                        'idUsuario' => $idUsuarioEncriptado,
+                        'success' => false,
+                        'message' => 'Excepción: ' . $e->getMessage()
+                    );
+                    $fallidos++;
+                }
+            }
+
+            // Preparar el mensaje de respuesta
+            $mensaje = "Se han asignado turnos correctamente a $exitosos usuarios";
+            if ($fallidos > 0) {
+                $mensaje .= ", con $fallidos fallos.";
+            } else {
+                $mensaje .= ".";
+            }
+
+            // Usar la función de respuesta según el resultado
+            if ($exitosos > 0) {
+                $json = respuestaExito(
+                    array(
+                        'exitosos' => $exitosos,
+                        'fallidos' => $fallidos,
+                        'resultados' => $resultados
+                    ),
+                    $mensaje
+                );
+            } else {
+                $json = respuestaError(
+                    $mensaje,
+                    array(
+                        'exitosos' => $exitosos,
+                        'fallidos' => $fallidos,
+                        'resultados' => $resultados
+                    )
+                );
+            }
+        } catch (Exception $e) {
+            // Capturar errores generales
+            $json = respuestaError('Error al procesar la asignación de turnos: ' . $e->getMessage());
+        }
+    }
+
+    if ($_GET['band'] == 'get_turnos_asignados') {
+        try {
+            $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? ENCR::descript($list_record['idCentroTrabajo']) : '';
+
+            // Consulta SQL usando la vista vAsignacionTurnosUsuario
+            $sql = "SELECT 
+                NombreCompleto AS nombre, 
+                Identificacion AS cedula, 
+                Cargo AS cargo, 
+                FORMAT(fechaInicio, 'dd/MM/yyyy') AS fechaInicio, 
+            FORMAT(fechaFin, 'dd/MM/yyyy') AS fechaFin,
+                horaInicio, 
+                horaFin, 
+                duracion,
+                idProgramacion
+            FROM testTraz2.dbo.vAsignacionTurnosUsuario
+            WHERE idCentroTrabajo = ?
+            GROUP BY
+                NombreCompleto,
+                Identificacion,
+                Cargo,
+                fechaInicio,
+                fechaFin,
+                horaInicio,
+                horaFin,
+                duracion,
+                idProgramacion
+            ORDER BY 
+                NombreCompleto, 
+                fechaInicio";
+
+            $params = array($idCentroTrabajo);
+            $stmt = sqlsrv_query($conn, $sql, $params);
+
+            if ($stmt === false) {
+                // Error en la consulta
+                $errors = sqlsrv_errors();
+                $json = respuestaError('Error al ejecutar la consulta: ' . $errors[0]['message']);
+            } else {
+                // Obtener los resultados como un array
+                $turnos = array();
+                while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                    $turnos[] = array(
+                        'nombre' => utf8_encode($row['nombre']),
+                        'cedula' => $row['cedula'],
+                        'cargo' => $row['cargo'],
+                        'fechaInicio' => $row['fechaInicio'],
+                        'fechaFin' => $row['fechaFin'],
+                        'horaInicio' => $row['horaInicio'],
+                        'horaFin' => $row['horaFin'],
+                        'duracion' => $row['duracion'],
+                        'idProgramacion' => ENCR::encript($row['idProgramacion'])
+                    );
+                }
+
+                // Respuesta exitosa con los datos
+                $json = respuestaExito(
+                    $turnos,
+                    'Turnos asignados obtenidos correctamente'
+                );
+            }
+        } catch (Exception $e) {
+            // Capturar errores generales
+            $json = respuestaError('Error al procesar la consulta de turnos: ' . $e->getMessage());
+        }
+    }
+
+    if ($_GET['band'] == 'delete_programacion_turno') {
+        try {
+            // Obtener ID de la programación
+            $idProgramacion = isset($list_record['idProgramacion']) ? ENCR::descript($list_record['idProgramacion']) : null;
+
+            if (!$idProgramacion) {
+                $json = respuestaError('ID de programación no proporcionado o inválido');
+            } else {
+                // Primero eliminar los detalles (por integridad referencial)
+                $sqlDetalles = "DELETE FROM ProgramacionTurnosDetalle WHERE idProgramacion = ?";
+                $stmtDetalles = sqlsrv_query($conn, $sqlDetalles, array($idProgramacion));
+
+                if ($stmtDetalles === false) {
+                    $errors = sqlsrv_errors();
+                    $json = respuestaError('Error al eliminar los detalles: ' . $errors[0]['message']);
+                } else {
+                    // Luego eliminar la programación principal
+                    $sqlProgramacion = "DELETE FROM ProgramacionTurnos WHERE idProgramacion = ?";
+                    $stmtProgramacion = sqlsrv_query($conn, $sqlProgramacion, array($idProgramacion));
+
+                    if ($stmtProgramacion === false) {
+                        $errors = sqlsrv_errors();
+                        $json = respuestaError('Error al eliminar la programación: ' . $errors[0]['message']);
+                    } else {
+                        $json = respuestaExito(
+                            array('idProgramacion' => ENCR::encript($idProgramacion)),
+                            'Programación de turno eliminada correctamente'
+                        );
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            $json = respuestaError('Error al procesar la eliminación: ' . $e->getMessage());
+        }
+    }
+
+    if ($_GET['band'] == 'update_programacion_turno') {
+        try {
+            // Obtener datos de la programación a actualizar
+            $idProgramacion = isset($list_record['idProgramacion']) ? ENCR::descript($list_record['idProgramacion']) : null;
+            $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? ENCR::descript($list_record['idCentroTrabajo']) : null;
+            $fechaInicio = isset($list_record['fechaInicio']) ? $list_record['fechaInicio'] : null;
+            $fechaFin = isset($list_record['fechaFin']) ? $list_record['fechaFin'] : null;
+            $activo = isset($list_record['activo']) ? $list_record['activo'] : 1;
+            $idUsuarioRegistra = isset($list_record['idUsuarioRegistra']) ? $list_record['idUsuarioRegistra'] : '22954799-f18d-4b80-aae2-6868cf053354';
+
+            if (!$idProgramacion) {
+                $json = respuestaError('ID de programación no proporcionado o inválido');
+            } else {
+                // Actualizar la programación principal
+                $sqlUpdate = "UPDATE ProgramacionTurnos 
+                SET fechaInicio = ?, 
+                    fechaFin = ?, 
+                    activo = ?,
+                    idCentroTrabajo = ?
+                WHERE idProgramacion = ?";
+
+                $params = array($fechaInicio, $fechaFin, $activo, $idCentroTrabajo, $idProgramacion);
+                $stmtUpdate = sqlsrv_query($conn, $sqlUpdate, $params);
+
+                if ($stmtUpdate === false) {
+                    $errors = sqlsrv_errors();
+                    $json = respuestaError('Error al actualizar la programación: ' . $errors[0]['message']);
+                } else {
+                    // La actualización de detalles es más compleja y dependerá de tu lógica específica
+                    // Podrías eliminar todos los detalles existentes y crear nuevos, o actualizar los existentes
+                    // Por ahora, solo devolvemos éxito en la actualización principal
+
+                    $json = respuestaExito(
+                        array('idProgramacion' => ENCR::encript($idProgramacion)),
+                        'Programación de turno actualizada correctamente'
+                    );
+                }
+            }
+        } catch (Exception $e) {
+            $json = respuestaError('Error al procesar la actualización: ' . $e->getMessage());
+        }
     }
 
     if ($_GET['band'] == 'save_Turnos') {
