@@ -1204,8 +1204,8 @@ function cargar_turnosAll() {
                     <td class="text-center">${turno.horaFin || '--:--'}</td>
                     <td class="text-center">${turno.duracion || '--:--'}</td>
                     <td class="text-center">
-                        <button class="btn btn-xs btn-primary" onclick="editarTurno('${turno.id}')"><i class="glyphicon glyphicon-pencil"></i></button>
-                        <button class="btn btn-xs btn-danger" onclick="eliminarTurno('${turno.id}')"><i class="glyphicon glyphicon-trash"></i></button>
+                        <button disabled class="btn btn-xs btn-primary" onclick="editarTurno('${turno.id}')"><i class="glyphicon glyphicon-pencil"></i></button>
+                        <button disabled class="btn btn-xs btn-danger" onclick="eliminarTurno('${turno.id}')"><i class="glyphicon glyphicon-trash"></i></button>
                     </td>
                 </tr>`;
             });
@@ -1527,7 +1527,7 @@ function asignarTurnoMultiple() {
             usuarios: usuarios,
             idCentroTrabajo: idCentroTrabajo,
             diasLaborales: diasLaborales,
-            idUsuario: '22954799-f18d-4b80-aae2-6868cf053354'
+            idUsuario: id_usuario
         })
     }).then(response => {
         if (!response.ok) {
@@ -1607,7 +1607,7 @@ async function cargarTurnosAsignados() {
             '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><p>Cargando turnos asignados...</p></div>';
 
         // ID de centro de trabajo genérico (se puede cambiar por uno real más adelante)
-        const idCentroTrabajoGenerico = 'bW9BRTgwS2hNNUd4QXd6Zm53cDhSWFJUUnM3ZGhFRzBlYytUMm1CdU94V2VHS3hHQkgxQXhpK2hEb0syRDdCdw==';
+        const idUsuario = id_usuario;
 
         // Realizar la petición al servidor
         const response = await fetch('../modelo/jornada_bitacora.php?band=get_turnos_asignados', {
@@ -1616,7 +1616,7 @@ async function cargarTurnosAsignados() {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                idCentroTrabajo: idCentroTrabajoGenerico
+                idUsuario: idUsuario
             })
         });
 
@@ -1656,10 +1656,10 @@ async function cargarTurnosAsignados() {
                         <td>${item.horaFin || ''}</td>
                         <td>${item.duracion || ''}</td>
                         <td class="text-center">
-                            <button class="btn btn-warning btn-sm" onclick="editarProgramacionTurno('${item.idProgramacion}')" title="Editar turno">
+                            <button disabled class="btn btn-warning btn-sm" onclick="editarProgramacionTurno('${item.idProgramacion}')" title="Editar turno">
                                 <span class="glyphicon glyphicon-pencil"></span>
                             </button>
-                            <button class="btn btn-danger btn-sm" onclick="eliminarProgramacionTurno('${item.idProgramacion}')" title="Eliminar turno">
+                            <button disabled class="btn btn-danger btn-sm" onclick="eliminarProgramacionTurno('${item.idProgramacion}')" title="Eliminar turno">
                                 <span class="glyphicon glyphicon-trash"></span>
                             </button>
                         </td>
@@ -1754,9 +1754,8 @@ async function editarProgramacionTurno(idProgramacion) {
     }
 
     try {
-        // Mostrar indicador de carga
-        document.getElementById('div_editar_turno') && (document.getElementById('div_editar_turno').innerHTML =
-            '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><p>Cargando información del turno...</p></div>');
+        // Mostrar un indicador de carga mientras se obtienen los datos
+        // alertify.message('Cargando información...');
 
         // Obtener los detalles de la programación
         const response = await fetch('../modelo/jornada_bitacora.php?band=get_programacion_turno', {
@@ -1770,8 +1769,17 @@ async function editarProgramacionTurno(idProgramacion) {
         const data = await response.json();
 
         if (data.success) {
-            // Mostrar modal con los datos para editar
-            mostrarModalEdicion(data.data);
+            // Asegurarse de que el modal esté disponible en el DOM antes de manipularlo
+            const modal = $('#modalEditarTurno');
+
+            // Preparar el modal y mostrarlo
+            modal.on('shown.bs.modal', function () {
+                // Este código se ejecutará una vez que el modal esté completamente visible
+                mostrarModalEdicion(data.data);
+            });
+
+            // Mostrar el modal
+            modal.modal('show');
         } else {
             alertify.error(data.message || 'Error al cargar la información del turno');
             console.error('Error al cargar la información:', data);
@@ -1784,31 +1792,76 @@ async function editarProgramacionTurno(idProgramacion) {
 
 // Función para mostrar modal de edición con los datos cargados
 function mostrarModalEdicion(programacion) {
-    // Aquí implementarías la lógica para mostrar un modal con los datos de la programación
-    // Como ejemplo, podrías usar Bootstrap modal o tu propia implementación
+    try {
+        // Acceder a los elementos solo después de que el modal esté completamente visible
+        const idProgramacionEl = document.getElementById('edit_idProgramacion');
+        const nombreUsuarioEl = document.getElementById('edit_nombreUsuario');
+        const fechaInicioEl = document.getElementById('edit_fechaInicio');
+        const fechaFinEl = document.getElementById('edit_fechaFin');
+        const idCentroTrabajoEl = document.getElementById('edit_idCentroTrabajo');
 
-    // Ejemplo si tienes un modal de Bootstrap con id="modalEditarTurno"
-
-    // Rellenar el formulario con los datos
-    document.getElementById('edit_idProgramacion').value = programacion.idProgramacion;
-    document.getElementById('edit_fechaInicio').value = programacion.fechaInicio;
-    document.getElementById('edit_fechaFin').value = programacion.fechaFin;
-
-    // Si tienes un campo para mostrar el nombre del usuario
-    document.getElementById('edit_nombreUsuario').value = programacion.nombreUsuario;
-    document.getElementById('edit_nombreUsuario').disabled = true; // No permitir edición
-
-    // Para un campo select de centro de trabajo, buscar la opción correcta
-    const selectCentro = document.getElementById('edit_idCentroTrabajo');
-    for (let i = 0; i < selectCentro.options.length; i++) {
-        if (selectCentro.options[i].getAttribute('data-id') === programacion.idCentroTrabajo) {
-            selectCentro.selectedIndex = i;
-            break;
+        // Verificar que todos los elementos existen
+        if (!idProgramacionEl || !nombreUsuarioEl || !fechaInicioEl || !fechaFinEl || !idCentroTrabajoEl) {
+            console.error('Error: No se encontraron algunos elementos del formulario');
+            alertify.error('Error al cargar el formulario de edición.');
+            return;
         }
+
+        // Asignar los valores a los campos
+        idProgramacionEl.value = programacion.idProgramacion || '';
+        nombreUsuarioEl.value = programacion.nombreUsuario || '';
+        fechaInicioEl.value = programacion.fechaInicio || '';
+        fechaFinEl.value = programacion.fechaFin || '';
+
+        // Cargar los centros de trabajo para el datalist
+        list_CentroTrabajoEdit();
+
+        // Establecer el centro de trabajo con un pequeño retraso para asegurar que el datalist esté cargado
+        setTimeout(() => {
+            if (idCentroTrabajoEl) {
+                idCentroTrabajoEl.value = programacion.centroDeTrabajo || '';
+            }
+        }, 300);
+
+    } catch (e) {
+        console.error('Error al mostrar el modal de edición:', e);
+        alertify.error('Error al preparar el formulario de edición.');
+    }
+}
+
+// Función para cargar los centros de trabajo en el datalist de edición
+function list_CentroTrabajoEdit() {
+    const list_Centro = document.getElementById("list_CentroTrabajoEdit");
+    if (!list_Centro) {
+        console.error('No se encontró el elemento list_CentroTrabajoEdit');
+        return;
     }
 
-    // Mostrar el modal
-    $('#modalEditarTurno').modal('show');
+    // Limpiar opciones existentes
+    list_Centro.innerHTML = '';
+
+    // Hacer la petición para obtener los centros de trabajo
+    fetch('../modelo/jornada_bitacora.php?band=get_CentrosDeTrabajo', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ texto_Centro: "" })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data && Array.isArray(data)) {
+                data.forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item.name;
+                    option.setAttribute('data-id', item.id);
+                    list_Centro.appendChild(option);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error al cargar los centros de trabajo:', error);
+        });
 }
 
 // Función para guardar los cambios de la programación
@@ -1860,7 +1913,7 @@ async function guardarCambiosProgramacion() {
     }
 }
 
-
+// --------------------------------
 async function delete_Turnos_asignado(id) {
     let iduser = consulta('idUsuario_asignar', 'list_Usuario_asignar');
 

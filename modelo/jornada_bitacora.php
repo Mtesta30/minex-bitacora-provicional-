@@ -2,7 +2,7 @@
 // require_once '../../conectar.php';
 require_once '../../conectartestTraz2.php';
 include("../../clase_encrip.php");
-// include("../../flujos/funciones.php");
+include("../../flujos/funciones.php");
 
 $post_data = file_get_contents('php://input');
 $list_record = json_decode($post_data, true);
@@ -1767,44 +1767,52 @@ if (isset($_GET['band'])) {
 
     if ($_GET['band'] == 'get_turnos_asignados') {
         try {
-            $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? ENCR::descript($list_record['idCentroTrabajo']) : '';
+            $idUsuario = isset($list_record['idUsuario']) ? ENCR::descript($list_record['idUsuario']) : '';
 
-            // Consulta SQL usando la vista vAsignacionTurnosUsuario
+            // Obtener array de centros de trabajo permitidos
+            $centrosTrabajo = FUNCIONES::BuscarpermisoDetalle($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
+
+            // Si no hay centros de trabajo asignados, retornar error
+            if (empty($centrosTrabajo)) {
+                $json = respuestaError('Usuario no tiene centros de trabajo asignados');
+                return;
+            }
+
+            // Modificar la consulta para incluir múltiples centros de trabajo
             $sql = "SELECT 
-                NombreCompleto AS nombre, 
-                Identificacion AS cedula, 
-                Cargo AS cargo, 
-                FORMAT(fechaInicio, 'dd/MM/yyyy') AS fechaInicio, 
+            NombreCompleto AS nombre, 
+            Identificacion AS cedula, 
+            Cargo AS cargo, 
+            FORMAT(fechaInicio, 'dd/MM/yyyy') AS fechaInicio, 
             FORMAT(fechaFin, 'dd/MM/yyyy') AS fechaFin,
-                horaInicio, 
-                horaFin, 
-                duracion,
-                idProgramacion
-            FROM testTraz2.dbo.vAsignacionTurnosUsuario
-            WHERE idCentroTrabajo = ?
-            GROUP BY
-                NombreCompleto,
-                Identificacion,
-                Cargo,
-                fechaInicio,
-                fechaFin,
-                horaInicio,
-                horaFin,
-                duracion,
-                idProgramacion
-            ORDER BY 
-                NombreCompleto, 
-                fechaInicio";
+            horaInicio, 
+            horaFin, 
+            duracion,
+            idProgramacion
+        FROM testTraz2.dbo.vAsignacionTurnosUsuario
+        WHERE idCentroTrabajo IN (" . implode(',', array_fill(0, count($centrosTrabajo), '?')) . ")
+        GROUP BY
+            NombreCompleto,
+            Identificacion,
+            Cargo,
+            fechaInicio,
+            fechaFin,
+            horaInicio,
+            horaFin,
+            duracion,
+            idProgramacion
+        ORDER BY 
+            NombreCompleto, 
+            fechaInicio";
 
-            $params = array($idCentroTrabajo);
+            // Preparar los parámetros con los IDs de centros de trabajo
+            $params = $centrosTrabajo;
             $stmt = sqlsrv_query($conn, $sql, $params);
 
             if ($stmt === false) {
-                // Error en la consulta
                 $errors = sqlsrv_errors();
                 $json = respuestaError('Error al ejecutar la consulta: ' . $errors[0]['message']);
             } else {
-                // Obtener los resultados como un array
                 $turnos = array();
                 while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
                     $turnos[] = array(
@@ -1820,15 +1828,106 @@ if (isset($_GET['band'])) {
                     );
                 }
 
-                // Respuesta exitosa con los datos
                 $json = respuestaExito(
                     $turnos,
                     'Turnos asignados obtenidos correctamente'
                 );
             }
         } catch (Exception $e) {
-            // Capturar errores generales
             $json = respuestaError('Error al procesar la consulta de turnos: ' . $e->getMessage());
+        }
+    }
+
+    if ($_GET['band'] == 'get_programacion_turno') {
+        try {
+            // Obtener ID de la programación
+            $idProgramacion = isset($list_record['idProgramacion']) ? ENCR::descript($list_record['idProgramacion']) : null;
+
+            if (!$idProgramacion) {
+                $json = respuestaError('ID de programación no proporcionado o inválido');
+            } else {
+                // Obtener datos completos de la programación
+                $sql = "SELECT 
+                PT.idProgramacion,
+                PT.idUsuario,
+                PT.idCentroTrabajo,
+                PT.fechaInicio,
+                PT.fechaFin,
+                PT.activo,
+                VU.NombreCompleto AS nombreUsuario,
+                D.Descripcion AS centroDeTrabajo
+            FROM 
+                ProgramacionTurnos PT
+                INNER JOIN vUsuariosAppBiometrico VU ON PT.idUsuario = VU.idUsuario
+                INNER JOIN Destino D ON PT.idCentroTrabajo = D.idDestino
+            WHERE 
+                PT.idProgramacion = ?";
+
+                $stmt = sqlsrv_query($conn, $sql, array($idProgramacion));
+
+                if ($stmt === false) {
+                    $errors = sqlsrv_errors();
+                    $json = respuestaError('Error al consultar la programación: ' . $errors[0]['message']);
+                } else {
+                    if ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                        // Obtener los turnos asignados por día
+                        $sqlTurnos = "SELECT 
+                        PTD.fecha, 
+                        T.idTurno,
+                        T.descripcion,
+                        T.horaInicio,
+                        T.horaFin,
+                        T.duracionHoras
+                    FROM 
+                        ProgramacionTurnosDetalle PTD
+                        INNER JOIN Turnos T ON PTD.idTurno = T.idTurno
+                    WHERE 
+                        PTD.idProgramacion = ?
+                    ORDER BY 
+                        PTD.fecha";
+
+                        $stmtTurnos = sqlsrv_query($conn, $sqlTurnos, array($idProgramacion));
+
+                        if ($stmtTurnos === false) {
+                            $errors = sqlsrv_errors();
+                            $json = respuestaError('Error al consultar los turnos: ' . $errors[0]['message']);
+                        } else {
+                            $detallesTurno = array();
+                            while ($rowTurno = sqlsrv_fetch_array($stmtTurnos, SQLSRV_FETCH_ASSOC)) {
+                                $detallesTurno[] = array(
+                                    'fecha' => $rowTurno['fecha']->format('Y-m-d'),
+                                    'idTurno' => ENCR::encript($rowTurno['idTurno']),
+                                    'descripcion' => $rowTurno['descripcion'],
+                                    'horaInicio' => $rowTurno['horaInicio']->format('H:i:s'),
+                                    'horaFin' => $rowTurno['horaFin']->format('H:i:s'),
+                                    'duracionHoras' => $rowTurno['duracionHoras']
+                                );
+                            }
+
+                            $programacion = array(
+                                'idProgramacion' => ENCR::encript($row['idProgramacion']),
+                                'idUsuario' => ENCR::encript($row['idUsuario']),
+                                'idCentroTrabajo' => ENCR::encript($row['idCentroTrabajo']),
+                                'fechaInicio' => $row['fechaInicio']->format('Y-m-d'),
+                                'fechaFin' => $row['fechaFin']->format('Y-m-d'),
+                                'activo' => $row['activo'],
+                                'nombreUsuario' => $row['nombreUsuario'],
+                                'centroDeTrabajo' => $row['centroDeTrabajo'],
+                                'detallesTurno' => $detallesTurno
+                            );
+
+                            $json = respuestaExito(
+                                $programacion,
+                                'Datos de programación obtenidos correctamente'
+                            );
+                        }
+                    } else {
+                        $json = respuestaError('No se encontró la programación de turno especificada');
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            $json = respuestaError('Error al procesar la consulta: ' . $e->getMessage());
         }
     }
 

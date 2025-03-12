@@ -492,6 +492,50 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
             </div>
         </div>
 
+        <div class="collapse fade" id="crear_t" tabindex="-1" role="dialog" aria-labelledby="collapse" aria-hidden="true">
+            <div class="container-fluid">
+                <div class="row">
+                    <h2 class="col-xs-12">CREAR TURNO TRABAJO</h2>
+                </div>
+                <div class="row">
+                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
+                        <div class="form-group">
+                            <label for="descripcion_auto">Nombre del turno:</label>
+                            <div class="input-group">
+                                <span class="input-group-addon">
+                                    <input type="checkbox" id="descripcion_auto" onchange="toggleDescripcionMode()">
+                                    <label for="descripcion_auto" style="margin-bottom: 0; margin-left: 5px;">Auto</label>
+                                </span>
+                                <input class="form-control" type="text" id="Nombre_turno" placeholder="Nombre del turno">
+                            </div>
+                            <small class="text-muted" id="descripcion_help">Introduce manualmente el nombre del turno</small>
+                        </div>
+                    </div>
+                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2">
+                        <label>Hora Entrada:</label>
+                        <input class="form-control" type="time" id="FechaInicial_turno" onchange="calcularDuracion(this.value, document.getElementById('FechaFinal_turno').value)">
+                    </div>
+                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2">
+                        <label>Hora Salida:</label>
+                        <input class="form-control" type="time" id="FechaFinal_turno" onchange="calcularDuracion(document.getElementById('FechaInicial_turno').value, this.value)">
+                    </div>
+                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2">
+                        <label>Duración:</label>
+                        <input class="form-control" type="time" id="Duracion_turno" readonly style="background-color: #f9f9f9;">
+                    </div>
+                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2" style="margin-top: 25px;">
+                        <button type="button" id="button_crear_t" class="btn btn-primary" onclick="get_crear_turno()">Crear Turno</button>
+                    </div>
+                </div>
+            </div><br>
+            <!-- <h2>Turnos Existentes:</h2> -->
+            <div class="table-responsive" style="text-align: center; margin: 0 auto;">
+                <div id="div_tabla_turnos">
+                    <!-- La tabla se mostrará centrada dentro de este div -->
+                </div>
+            </div>
+        </div>
+
         <!-- <div class="modal fade" id="idTurnos_t" tabindex="-1" role="dialog" aria-labelledby="Modal" aria-hidden="true">
                 <div class="modal-dialog" role="document">
                     <div class="modal-content">
@@ -558,17 +602,11 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                             <select name="dias_laborales" id="dias_laborales" class="form-control" multiple="multiple" style="text-align: left !important; border: 1px solid;"></select>
                         </div>
                     </div>
+
                 </div>
-                <!-- <div class="container">
-                    <div class="row">
-                        <div id="div_tabla_turnos_asignar"></div>
-                    </div>
-                </div><br> -->
-            </div><br>
-            <!-- REGISTRO DE TURNOS -->
-            <div class="container-fluid" style="border: 1px solid; border-radius: 5px; margin-top: 15px;">
+
                 <div class="row">
-                    <h3 class="col-xs-12">Registro Múltiple de Usuarios</h3>
+                    <!-- <h3 class="col-xs-12">Registro Múltiple de Usuarios</h3> -->
                     <div class="col-xs-9 col-sm-10 col-md-10 col-lg-10">
                         <label for="buscar_usuarios">Buscar Usuarios:</label>
                         <input type="text" id="buscar_usuarios" class="form-control" placeholder="Buscar por nombre, cédula o cargo" onkeyup="get_Usuarios(this.value)">
@@ -603,7 +641,14 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                         <span id="conteo_seleccionados">0</span> usuarios seleccionados
                     </div>
                 </div>
-            </div> <br>
+                <!-- <div class="container">
+                    <div class="row">
+                        <div id="div_tabla_turnos_asignar"></div>
+                    </div>
+                </div><br> -->
+            </div>
+            <!-- REGISTRO DE TURNOS -->
+            <!-- <div class="container-fluid" style="border: 1px solid; border-radius: 5px; margin-top: 15px;"> -->
             <!-- TURNOS ASIGNADOS -->
             <div class="container-fluid" style="border: 1px solid; border-radius: 5px; margin-top: 15px;">
                 <div class="row">
@@ -614,175 +659,192 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
 
                 </div>
             </div><br>
+        </div> <br>
+
+    </div>
+
+    <!-- Modal para editar programación de turnos -->
+    <div class="modal fade" id="modalEditarTurno" tabindex="-1" role="dialog" aria-labelledby="modalEditarTurnoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="modal-title" id="modalEditarTurnoLabel">Editar Programación de Turno</h4>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body" id="div_editar_turno">
+                    <form id="formEditarTurno">
+                        <!-- Campo oculto para el ID de programación -->
+                        <input type="hidden" id="edit_idProgramacion">
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="edit_nombreUsuario">Usuario:</label>
+                                    <input type="text" id="edit_nombreUsuario" class="form-control" disabled>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="edit_fechaInicio">Fecha Inicio:</label>
+                                    <input type="date" id="edit_fechaInicio" class="form-control">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="edit_fechaFin">Fecha Fin:</label>
+                                    <input type="date" id="edit_fechaFin" class="form-control">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="edit_idCentroTrabajo">Centro de Trabajo:</label>
+                                    <input type="text" id="edit_idCentroTrabajo" list="list_CentroTrabajoEdit" class="form-control" placeholder="Seleccione un centro de trabajo" />
+                                    <datalist id="list_CentroTrabajoEdit"></datalist>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Aquí podrías añadir campos para editar los turnos específicos por día -->
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="guardarCambiosProgramacion()">Guardar Cambios</button>
+                </div>
+            </div>
         </div>
+    </div>
 
-        <div class="modal fade" id="idReglasDetalles" tabindex="-1" role="dialog" aria-labelledby="Modal" aria-hidden="true">
-            <div class="modal-dialog" role="document">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h4 class="modal-title" id="exampleModalLabelT">Editar Reglas Detalle</h4>
-                        <button type="button" id="cerrarmodalidReglasDetalles" class="close" data-dismiss="modal" aria-label="Cerrar">
-                            <span aria-hidden="true">&times;</span>
-                        </button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="row">
-                            <input type="hidden" id="i">
-                            <div class="col-xs-6 col-sm-6 col-md-6 col-lg-6">
-                                <label for="FechaInicialReglasDetalle">Fecha Inicial</label>
-                                <input type="datetime-local" id="FechaInicialReglasDetalle" class="form-control detallesRegla" />
-                            </div>
-                            <div class="col-xs-6 col-sm-6 col-md-6 col-lg-6">
-                                <label for="FechaFinalReglasDetalle">Fecha Final</label>
-                                <input type="datetime-local" id="FechaFinalReglasDetalle" class="form-control detallesRegla" />
-                            </div>
+    <div class="modal fade" id="idReglasDetalles" tabindex="-1" role="dialog" aria-labelledby="Modal" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="modal-title" id="exampleModalLabelT">Editar Reglas Detalle</h4>
+                    <button type="button" id="cerrarmodalidReglasDetalles" class="close" data-dismiss="modal" aria-label="Cerrar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <input type="hidden" id="i">
+                        <div class="col-xs-6 col-sm-6 col-md-6 col-lg-6">
+                            <label for="FechaInicialReglasDetalle">Fecha Inicial</label>
+                            <input type="datetime-local" id="FechaInicialReglasDetalle" class="form-control detallesRegla" />
                         </div>
-                        <div class="row">
-                            <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
-                                <label for="ReglaName">Regla</label>
-                                <select id="ReglaName" class="form-control detallesRegla"></select>
-                                <!-- <input class="form-control turno" type="text" id="ReglaName" ></input> -->
-                            </div>
-                            <div class="col-xs-3 col-sm-3 col-md-3 col-lg-3">
-                                <label for="ReglaValor">Valor</label>
-                                <input class="form-control detallesRegla" type="text" id="ReglaValor"></input>
-                            </div>
-
-                            <div class="col-xs-3 col-sm-3 col-md-3 col-lg-3" id="campoRegla">
-                                <label for="campoIdRegla">Id</label>
-                                <input class="form-control detallesRegla" type="text" id="campoIdRegla"></input>
-                            </div>
-                            <div class="col-xs-3 col-sm-3 col-md-3 col-lg-3" id="campoidxid">
-                                <label for="IdxidRegla">Idxid</label>
-                                <input class="form-control detallesRegla" type="text" id="IdxidRegla"></input>
-                            </div>
-                            <div class="col-xs-2 col-sm-2 col-md-2 col-lg-2"><br>
-                                <button type="button" id="idButtonRegla" class="btn btn-primary" onclick="save_Regla()">Guardar</button>
-                            </div>
-                            <div class="col-xs-2 col-sm-2 col-md-2 col-lg-2"><br>
-                                <button type="button" id="idButtonCancelarR" class="btn btn-danger " data-dismiss="modal" aria-label="Cerrar">Cancelar</button>
-                            </div>
+                        <div class="col-xs-6 col-sm-6 col-md-6 col-lg-6">
+                            <label for="FechaFinalReglasDetalle">Fecha Final</label>
+                            <input type="datetime-local" id="FechaFinalReglasDetalle" class="form-control detallesRegla" />
                         </div>
                     </div>
-                    <div class="modal-footer">
-                        <div class="table-responsive">
-                            <div id="div_tabla4"></div>
+                    <div class="row">
+                        <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
+                            <label for="ReglaName">Regla</label>
+                            <select id="ReglaName" class="form-control detallesRegla"></select>
+                            <!-- <input class="form-control turno" type="text" id="ReglaName" ></input> -->
+                        </div>
+                        <div class="col-xs-3 col-sm-3 col-md-3 col-lg-3">
+                            <label for="ReglaValor">Valor</label>
+                            <input class="form-control detallesRegla" type="text" id="ReglaValor"></input>
+                        </div>
+
+                        <div class="col-xs-3 col-sm-3 col-md-3 col-lg-3" id="campoRegla">
+                            <label for="campoIdRegla">Id</label>
+                            <input class="form-control detallesRegla" type="text" id="campoIdRegla"></input>
+                        </div>
+                        <div class="col-xs-3 col-sm-3 col-md-3 col-lg-3" id="campoidxid">
+                            <label for="IdxidRegla">Idxid</label>
+                            <input class="form-control detallesRegla" type="text" id="IdxidRegla"></input>
+                        </div>
+                        <div class="col-xs-2 col-sm-2 col-md-2 col-lg-2"><br>
+                            <button type="button" id="idButtonRegla" class="btn btn-primary" onclick="save_Regla()">Guardar</button>
+                        </div>
+                        <div class="col-xs-2 col-sm-2 col-md-2 col-lg-2"><br>
+                            <button type="button" id="idButtonCancelarR" class="btn btn-danger " data-dismiss="modal" aria-label="Cerrar">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="table-responsive">
+                        <div id="div_tabla4"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="mostrar_detalle" tabindex="-1" role="dialog" aria-labelledby="Modal" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                    <h4 class="modal-title" id="exampleModalLabel">Detalle : <label id="turno_especifico"></label></h4>
+
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-xs-12 col-sm-8 col-md-8 col-lg-8">
+                            <label for="idUsuarioTurnos">Usuario:</label>
+                            <input type="text" id="user_nombre" class="form-control turnos" disabled />
+                            <input type="hidden" id="user_documento" class="form-control turnos" disabled />
+                            <input type="hidden" id="user_empresa" class="form-control turnos" disabled />
+                        </div>
+                        <div class="col-xs-12 col-sm-4 col-md-4 col-lg-4">
+                            <label for="idUsuarioTurnos">Tiquete:</label>
+                            <input type="text" id="user_tiquete" class="form-control turnos" disabled />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="table-responsive">
+                        <div id="div_tabla_detalle_biometrico"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="modificar_detalle" tabindex="-1" role="dialog" aria-labelledby="Modal" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                    <input id="turno_actual" type="text">
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-xs-12 col-sm-4 col-md-4 col-lg-4">
+                            <label>Fecha Salida:</label>
+                            <input type="date" id="fecha_detalle" class="form-control turnos" />
+                        </div>
+                        <div class="col-xs-12 col-sm-4 col-md-4 col-lg-4">
+                            <label>Hora Salida:</label>
+                            <input type="time" id="hora_detalle" class="form-control turnos" />
+                        </div>
+                        <div class="col-xs-12 col-sm-4 col-md-4 col-lg-4">
+                            <label>Tipo de Movimiento:</label>
+                            <input type="text" id="salida" class="form-control turnos" disabled value="Salida" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-xs-12 col-sm-12 col-md-12 col-lg-12" style="text-align:right;">
+                            <button type="button" id="idButtonCancelarR" class="btn btn-primary" onclick="grabar_correccion()" data-dismiss="modal" aria-label="Cerrar">Grabar</button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <div class="modal fade" id="mostrar_detalle" tabindex="-1" role="dialog" aria-labelledby="Modal" aria-hidden="true">
-            <div class="modal-dialog" role="document">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
-                            <span aria-hidden="true">&times;</span>
-                        </button>
-                        <h4 class="modal-title" id="exampleModalLabel">Detalle : <label id="turno_especifico"></label></h4>
 
-                    </div>
-                    <div class="modal-body">
-                        <div class="row">
-                            <div class="col-xs-12 col-sm-8 col-md-8 col-lg-8">
-                                <label for="idUsuarioTurnos">Usuario:</label>
-                                <input type="text" id="user_nombre" class="form-control turnos" disabled />
-                                <input type="hidden" id="user_documento" class="form-control turnos" disabled />
-                                <input type="hidden" id="user_empresa" class="form-control turnos" disabled />
-                            </div>
-                            <div class="col-xs-12 col-sm-4 col-md-4 col-lg-4">
-                                <label for="idUsuarioTurnos">Tiquete:</label>
-                                <input type="text" id="user_tiquete" class="form-control turnos" disabled />
-                            </div>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <div class="table-responsive">
-                            <div id="div_tabla_detalle_biometrico"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="modal fade" id="modificar_detalle" tabindex="-1" role="dialog" aria-labelledby="Modal" aria-hidden="true">
-            <div class="modal-dialog" role="document">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <button type="button" class="close" data-dismiss="modal" aria-label="Cerrar">
-                            <span aria-hidden="true">&times;</span>
-                        </button>
-                        <input id="turno_actual" type="text">
-                    </div>
-                    <div class="modal-body">
-                        <div class="row">
-                            <div class="col-xs-12 col-sm-4 col-md-4 col-lg-4">
-                                <label>Fecha Salida:</label>
-                                <input type="date" id="fecha_detalle" class="form-control turnos" />
-                            </div>
-                            <div class="col-xs-12 col-sm-4 col-md-4 col-lg-4">
-                                <label>Hora Salida:</label>
-                                <input type="time" id="hora_detalle" class="form-control turnos" />
-                            </div>
-                            <div class="col-xs-12 col-sm-4 col-md-4 col-lg-4">
-                                <label>Tipo de Movimiento:</label>
-                                <input type="text" id="salida" class="form-control turnos" disabled value="Salida" />
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-xs-12 col-sm-12 col-md-12 col-lg-12" style="text-align:right;">
-                                <button type="button" id="idButtonCancelarR" class="btn btn-primary" onclick="grabar_correccion()" data-dismiss="modal" aria-label="Cerrar">Grabar</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="collapse fade" id="crear_t" tabindex="-1" role="dialog" aria-labelledby="collapse" aria-hidden="true">
-            <div class="container-fluid">
-                <div class="row">
-                    <h2 class="col-xs-12">CREAR TURNO TRABAJO</h2>
-                </div>
-                <div class="row">
-                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
-                        <div class="form-group">
-                            <label for="descripcion_auto">Nombre del turno:</label>
-                            <div class="input-group">
-                                <span class="input-group-addon">
-                                    <input type="checkbox" id="descripcion_auto" onchange="toggleDescripcionMode()">
-                                    <label for="descripcion_auto" style="margin-bottom: 0; margin-left: 5px;">Auto</label>
-                                </span>
-                                <input class="form-control" type="text" id="Nombre_turno" placeholder="Nombre del turno">
-                            </div>
-                            <small class="text-muted" id="descripcion_help">Introduce manualmente el nombre del turno</small>
-                        </div>
-                    </div>
-                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2">
-                        <label>Hora Entrada:</label>
-                        <input class="form-control" type="time" id="FechaInicial_turno" onchange="calcularDuracion(this.value, document.getElementById('FechaFinal_turno').value)">
-                    </div>
-                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2">
-                        <label>Hora Salida:</label>
-                        <input class="form-control" type="time" id="FechaFinal_turno" onchange="calcularDuracion(document.getElementById('FechaInicial_turno').value, this.value)">
-                    </div>
-                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2">
-                        <label>Duración:</label>
-                        <input class="form-control" type="time" id="Duracion_turno" readonly style="background-color: #f9f9f9;">
-                    </div>
-                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2" style="margin-top: 25px;">
-                        <button type="button" id="button_crear_t" class="btn btn-primary" onclick="get_crear_turno()">Crear Turno</button>
-                    </div>
-                </div>
-            </div><br>
-            <!-- <h2>Turnos Existentes:</h2> -->
-            <div class="table-responsive" style="text-align: center; margin: 0 auto;">
-                <div id="div_tabla_turnos">
-                    <!-- La tabla se mostrará centrada dentro de este div -->
-                </div>
-            </div>
-        </div>
 
     </div>
     <script>
