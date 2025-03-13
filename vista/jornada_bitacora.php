@@ -4,7 +4,7 @@ require_once '../../conectartraz.php';
 // require_once '../../conectar.php';
 
 // Usuario de prueba
-$_SESSION['idUsuario'] = '22954799-f18d-4b80-aae2-6868cf053354';
+$_SESSION['idUsuario'] = 'd8c916d4-7b13-40a7-ad8c-38bae6f76429';
 
 // Permisos del sistema
 $_SESSION['permisos_todos'] = array(
@@ -148,15 +148,18 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     echo '</ul>
                     </li>';
                 }
+
                 if (isset($_SESSION['permisos_todos']['CONSULTA HORAS EXTRAS'])) {
                     echo '<li><a href="#" class="opciones" data-toggle="collapse" data-target="#idhorasExtras"><span class="glyphicon glyphicon-time" style="color: #5c80c0;"></span>Horas-Extras</a></li>';
                 }
+
                 if (isset($_SESSION['permisos_todos']['TURNOS'])) {
                     echo '<li><a href="#" class="opciones" data-toggle="collapse" data-target="#idTurnos"><span class="glyphicon glyphicon-time" style="color: #5c80c0;"></span>Turnos </a>
                             <ul id="idTurnos" class="collapse">';
                     if (isset($_SESSION['permisos_todos']['CREAR_TURNOS'])) {
                         echo '<a href="#" onClick="cargar_turnos(0); Buscar_actividad(); cargar_turnosAll();" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#crear_t"><span class="glyphicon glyphicon-folder-open" style="color: #5c80c0;"></span> Crear Turnos</a><br>';
                     }
+
                     if (isset($_SESSION['permisos_todos']['ASIGNAR_TURNOS'])) {
                         echo '<a href="#" onClick="cargar_turnos(1);get_Usuarios(); cargarTurnosAsignados();" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idTurnos_t"><span class="glyphicon glyphicon-pencil" style="color: #5c80c0;"></span> Asignar Turnos</a>';
                     }
@@ -590,11 +593,11 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     </div>
                     <div class="col-xs-3 col-sm-2 col-md-2 col-lg-2">
                         <label>Fecha Inicio:</label><br>
-                        <input class="form-control" type="date" name="fecha_ini" id="fecha_ini" min='<?php echo date('Y-m-d'); ?>' onchange="dias()">
+                        <input class="form-control" type="date" name="fecha_ini" id="fecha_ini" onchange="validarFechas()">
                     </div>
                     <div class="col-xs-3 col-sm-2 col-md-2 col-lg-2">
                         <label>Fecha Fin:</label><br>
-                        <input class="form-control" type="date" name="fecha_fin" id="fecha_fin" onchange="dias()">
+                        <input class="form-control" type="date" name="fecha_fin" id="fecha_fin" onchange="validarFechas()">
                     </div>
                     <div class="col-xs-4 col-sm-4 col-md-3 col-lg-3">
                         <label>Dias Laborales:</label><br>
