@@ -146,39 +146,84 @@ if (isset($_GET['band'])) {
     }
 
     if ($_GET['band'] == 'get_Usuarios') {
-        // Verificar si se proporcionó un texto de búsqueda
-        $texto_busqueda = isset($list_record['texto']) ? $list_record['texto'] : '';
+        try {
+            // 1. Obtener parámetros
+            $idUsuario = isset($list_record['idUsuario']) ? $list_record['idUsuario'] : '';
+            $texto_busqueda = isset($list_record['texto']) ? $list_record['texto'] : '';
 
-        // Construir la consulta SQL base
-        $sql = "SELECT TOP 10 idUsuario, NombreCompleto, Identificacion, Cargo 
-            FROM  vUsuariosAppBiometrico";
+            // 2. Obtener centros de trabajo permitidos
+            $centrosTrabajo = FUNCIONES::BuscarpermisoDetalle($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
 
-        // Si se proporciona un texto de búsqueda, agregar filtro
-        if (!empty($texto_busqueda)) {
-            $sql .= " WHERE NombreCompleto LIKE '%$texto_busqueda%' 
-                  OR Identificacion LIKE '%$texto_busqueda%'
-                  OR Cargo LIKE '%$texto_busqueda%'";
+            // 3. Validar si tiene centros asignados
+            if (empty($centrosTrabajo)) {
+                $json = respuestaError('Usuario no tiene centros de trabajo asignados');
+                return;
+            }
+
+            // 4. Construir la consulta SQL base usando la vista
+            $sql = "SELECT TOP 10 
+                    v.idUsuario,
+                    v.NombreCompleto,
+                    v.Identificacion,
+                    v.Cargo,
+                    v.CentroTrabajo
+                FROM vUsuariosCentroTrabajo v
+                WHERE v.idCentroTrabajo IN (" . implode(',', array_fill(0, count($centrosTrabajo), '?')) . ")";
+
+            // 5. Agregar filtros de búsqueda si se proporciona texto
+            if (!empty($texto_busqueda)) {
+                $sql .= " AND (
+                v.NombreCompleto LIKE ? OR 
+                v.Identificacion LIKE ? OR 
+                v.Cargo LIKE ?
+            )";
+            }
+
+            // 6. Ordenar resultados
+            $sql .= " ORDER BY v.NombreCompleto";
+
+            // 7. Preparar parámetros
+            $params = $centrosTrabajo;
+            if (!empty($texto_busqueda)) {
+                $params = array_merge($params, [
+                    '%' . $texto_busqueda . '%',
+                    '%' . $texto_busqueda . '%',
+                    '%' . $texto_busqueda . '%'
+                ]);
+            }
+
+            // 8. Ejecutar consulta
+            $stmt = sqlsrv_query($conn, $sql, $params);
+
+            if ($stmt === false) {
+                throw new Exception('Error al ejecutar la consulta: ' . print_r(sqlsrv_errors(), true));
+            }
+
+            // 9. Procesar resultados
+            $data = [];
+            while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                $registro = array(
+                    'id' => ENCR::encript($row['idUsuario']),
+                    'nombre' => utf8_encode($row['NombreCompleto']),
+                    'cedula' => $row['Identificacion'],
+                    'cargo' => $row['Cargo']
+                );
+                array_push($data, $registro);
+            }
+
+            // 10. Debug log
+            log_debug("Usuarios recuperados", array(
+                'cantidad' => count($data),
+                'centrosTrabajo' => count($centrosTrabajo),
+                'filtro' => $texto_busqueda
+            ));
+
+            // 11. Retornar respuesta
+            $json = respuestaExito($data, 'Usuarios obtenidos correctamente');
+        } catch (Exception $e) {
+            log_debug("Error en get_Usuarios", array('error' => $e->getMessage()));
+            $json = respuestaError('Error al procesar la consulta: ' . $e->getMessage());
         }
-
-        // Ordenar por nombre para mostrar resultados consistentes
-        $sql .= " ORDER BY NombreCompleto";
-
-        $res = sqlsrv_query($conn, $sql);
-        $data = [];
-
-        while ($aa = sqlsrv_fetch_array($res)) {
-            $idUsuario = ENCR::encript($aa['idUsuario']);
-            $Nombre = utf8_encode($aa['NombreCompleto']);
-            $registro = array(
-                'id' => $idUsuario,
-                'nombre' => $Nombre,
-                'cedula' => $aa['Identificacion'],
-                'cargo' => $aa['Cargo']
-            );
-            array_push($data, $registro);
-        }
-
-        $json = json_encode($data);
     }
 
     if ($_GET['band'] == 'get_CentrosDeTrabajo') {

@@ -59,6 +59,41 @@ AS Origen
             u.Habilitado = 1
 GO
 
+/* -------------------------------------------------- */
+/* Vista de todos los Usuarios asociados a un
+centro de trabajo consultando por su idBiometrico     */
+/* -------------------------------------------------- */
+CREATE OR ALTER VIEW [dbo].[vUsuariosCentroTrabajo] AS
+SELECT DISTINCT
+    u.idUsuario,
+    u.NombreCompleto,
+    u.Identificacion,
+    u.Cargo,
+    u.Origen,
+    d.idDestino AS idCentroTrabajo,
+    d.Descripcion AS CentroTrabajo,
+	b.idBiometrico,
+    b.identificadorBiometrico,
+    b.nombreDispositivo AS DispositivoBiometrico
+    --MAX(bit.FechaHora) AS UltimaActividad,
+    --COUNT(bit.idBitacora) AS TotalRegistros
+FROM 
+    [dbo].[vUsuariosAppBiometrico] u
+    INNER JOIN [dbo].[Bitacora] bit ON u.Identificacion = bit.Identificacion
+    INNER JOIN [dbo].[Biometricos] b ON bit.idBiometrico = b.idBiometrico
+    INNER JOIN [dbo].[Destino] d ON b.idCentroTrabajo = d.idDestino
+GROUP BY 
+    u.idUsuario, 
+    u.NombreCompleto, 
+    u.Identificacion, 
+    u.Cargo,
+    u.Origen,
+    d.idDestino,
+    d.Descripcion,
+	b.idBiometrico,
+    b.identificadorBiometrico,
+    b.nombreDispositivo
+GO
 
 /* -------------------------------------------------- */
 /* Tabla Biometricos */

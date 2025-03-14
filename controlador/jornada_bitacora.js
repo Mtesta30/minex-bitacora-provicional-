@@ -1,5 +1,3 @@
-// let id_usuario = 'd8c916d4-7b13-40a7-ad8c-38bae6f76429';
-
 document.addEventListener("DOMContentLoaded", () => {
     list_Centro("");
     list_Centrotrabajo("");
@@ -273,48 +271,86 @@ function eliminarTurno(idTurno) {
 let usuariosSeleccionados = new Set();
 
 // Función mejorada para buscar usuarios preservando las selecciones
-function get_Usuarios(texto = '') {
-    let param = { texto: texto };
-    let data = JSON.stringify(param);
-    fetch('../modelo/jornada_bitacora.php?band=get_Usuarios', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: data
-    })
-        .then(response => response.json())
-        .then(data => {
-            let tablaUsuarios = document.getElementById('tabla_usuarios_multiple');
-            let html = '';
+async function get_Usuarios(texto = '') {
+    try {
+        // 1. Preparar parámetros
+        const param = {
+            idUsuario: id_usuario, // Agregar idUsuario para filtrar por centros permitidos
+            texto: texto
+        };
 
-            if (data.length === 0) {
-                html = '<tr><td colspan="5" class="text-center">No se encontraron usuarios</td></tr>';
-            } else {
-                data.forEach(usuario => {
-                    // Verificar si el usuario ya estaba seleccionado previamente
-                    const estaSeleccionado = usuariosSeleccionados.has(usuario.id);
+        // 2. Realizar petición
+        const response = await fetch('../modelo/jornada_bitacora.php?band=get_Usuarios', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(param)
+        });
 
-                    html += `<tr>
-                            <td class="text-center">
-                                <input type="checkbox" name="usuarios[]" value="${usuario.id}" 
-                                    onchange="actualizarSeleccionUsuario(this)" 
-                                    ${estaSeleccionado ? 'checked' : ''}>
-                            </td>
-                            <td>${usuario.nombre}</td>
-                            <td>${usuario.cedula}</td>
-                            <td>${usuario.cargo || 'No especificado'}</td>
-                        </tr>`;
-                });
-            }
+        // 3. Validar respuesta
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Error al obtener usuarios');
+        }
 
-            tablaUsuarios.innerHTML = html;
-            actualizarConteo(); // Actualizar el contador
+        // 4. Obtener elemento tabla
+        const tablaUsuarios = document.getElementById('tabla_usuarios_multiple');
+        if (!tablaUsuarios) {
+            throw new Error('Elemento tabla_usuarios_multiple no encontrado');
+        }
 
-            // Actualizar estado del checkbox "seleccionar todos"
-            actualizarEstadoSeleccionarTodos();
-        })
-        .catch(error => console.error('Error:', error));
+        // 5. Generar HTML
+        let html = '';
+        if (!data.data || data.data.length === 0) {
+            html = '<tr><td colspan="5" class="text-center">No se encontraron usuarios</td></tr>';
+        } else {
+            data.data.forEach(usuario => {
+                const estaSeleccionado = usuariosSeleccionados.has(usuario.id);
+                const cargo = usuario.cargo || 'NO ESPECIFICADO';
+
+                html += `
+                    <tr>
+                        <td class="text-center">
+                            <input type="checkbox" 
+                                name="usuarios[]" 
+                                value="${usuario.id}"
+                                onchange="actualizarSeleccionUsuario(this)"
+                                ${estaSeleccionado ? 'checked' : ''}>
+                        </td>
+                        <td>${usuario.nombre}</td>
+                        <td>${usuario.cedula}</td>
+                        <td>${cargo}</td>
+                    </tr>`;
+            });
+        }
+
+        // 6. Actualizar tabla
+        tablaUsuarios.innerHTML = html;
+
+        // 7. Actualizar contadores y estados
+        actualizarConteo();
+        actualizarEstadoSeleccionarTodos();
+
+        // 8. Agregar tooltip con información adicional
+        $('[data-toggle="tooltip"]').tooltip();
+
+    } catch (error) {
+        console.error('Error en get_Usuarios:', error);
+        alertify.error('Error al cargar la lista de usuarios: ' + error.message);
+
+        // Mostrar mensaje de error en la tabla
+        const tablaUsuarios = document.getElementById('tabla_usuarios_multiple');
+        if (tablaUsuarios) {
+            tablaUsuarios.innerHTML = `
+                <tr>
+                    <td colspan="5" class="text-center text-danger">
+                        <i class="fas fa-exclamation-triangle"></i> 
+                        Error al cargar usuarios: ${error.message}
+                    </td>
+                </tr>`;
+        }
+    }
 }
 
 // Nueva función para actualizar el Set de usuarios seleccionados
@@ -379,7 +415,7 @@ function asignarTurnoMultiple() {
     let idTurno = document.getElementById('lista_turnos_a').value;
     let fechaInicio = document.getElementById('fecha_ini').value;
     let fechaFin = document.getElementById('fecha_fin').value;
-    let idCentroTrabajo = 'FC724084-FA9F-4551-B10A-307395F76265';
+    let idCentroTrabajo = consulta('CentroTrabajo', 'list_Centrotrabajo');;
 
     if (!idTurno || !fechaInicio || !fechaFin) {
         alertify.error('Debe seleccionar un turno y fechas de inicio y fin');
@@ -414,7 +450,7 @@ function asignarTurnoMultiple() {
             usuarios: usuarios,
             idCentroTrabajo: idCentroTrabajo,
             diasLaborales: diasLaborales,
-            idUsuario: 'd8c916d4-7b13-40a7-ad8c-38bae6f76429'
+            idUsuario: id_usuario
         })
     }).then(response => {
         if (!response.ok) {
@@ -440,11 +476,20 @@ function asignarTurnoMultiple() {
             // Limpiar selecciones solo si hubo asignaciones exitosas
             if (exitosos > 0) {
                 usuariosSeleccionados.clear();
-                get_Usuarios('');
+                // Recargar tablas y componentes
+                Promise.all([
+                    get_Usuarios(''),                // Recargar lista de usuarios
+                    cargarTurnosAsignados(),        // Recargar tabla de turnos asignados
+                    Buscar_detalle_tt(),            // Actualizar detalles
+                    buscar_asignados(),             // Actualizar asignados
+                    get_turnos_user_activo()        // Actualizar turnos activos
+                ]).catch(err => console.error('Error al actualizar componentes:', err));
 
-                // Actualizar otras partes de la interfaz si es necesario
-                if (typeof Buscar_detalle_tt === 'function') Buscar_detalle_tt();
-                if (typeof buscar_asignados === 'function') buscar_asignados();
+                // Limpiar formulario
+                document.getElementById('fecha_ini').value = '';
+                document.getElementById('fecha_fin').value = '';
+                $('#dias_laborales').multipleSelect('uncheckAll');
+                document.getElementById('lista_turnos_a').selectedIndex = 0;
             }
 
             // Si hay información detallada de errores, mostrarla
@@ -588,7 +633,7 @@ async function cargarTurnosAsignados() {
                 html += `<tr>
                     <td>${item.nombre || ''}</td>
                     <td>${item.cedula || ''}</td>
-                    <td>${item.cargo || ''}</td>
+                    <td>${item.cargo || 'NO ESPECIFICADO'}</td>
                     <td>${item.fechaInicio || ''}</td>
                     <td>${item.fechaFin || ''}</td>
                     <td>${item.horaInicio || ''}</td>
@@ -1022,19 +1067,21 @@ async function list_Centrotrabajo(object) {
             .text('Guardar');
 
         // 2. Obtener elementos necesarios
+        const inputCentro = document.getElementById("CentroTrabajo"); // Input del centro de trabajo
         const list_Centro = document.getElementById("list_Centrotrabajo");
-        if (!list_Centro) {
-            throw new Error('Elemento list_Centrotrabajo no encontrado');
+        if (!list_Centro || !inputCentro) {
+            throw new Error('Elementos necesarios no encontrados');
         }
 
         // 3. Mostrar indicador de carga
         list_Centro.innerHTML = '<option value="">Cargando centros de trabajo...</option>';
+        inputCentro.disabled = true;
 
         // 4. Preparar parámetros
         const texto_Centro = object?.value || "";
         const url = "../modelo/jornada_bitacora.php?band=get_CentrosDeTrabajo";
         const param = {
-            idUsuario: 'd8c916d4-7b13-40a7-ad8c-38bae6f76429',
+            idUsuario: id_usuario,
             texto_Centro: texto_Centro
         };
 
@@ -1050,32 +1097,60 @@ async function list_Centrotrabajo(object) {
         // 7. Limpiar opciones existentes
         list_Centro.innerHTML = '';
 
-        // 8. Agregar nuevas opciones usando un fragment para mejor rendimiento
-        const fragment = document.createDocumentFragment();
-        data.data.forEach(({ id, name }) => {
-            if (!list_Centro.querySelector(`option[value="${name}"]`)) {
-                const option = document.createElement('option');
-                option.value = name;
-                option.setAttribute('data-id', id);
-                fragment.appendChild(option);
-            }
-        });
+        // 8. Procesar resultados según cantidad
+        if (data.data.length === 1) {
+            // Si solo hay un registro
+            const unicoRegistro = data.data[0];
+            const option = document.createElement('option');
+            option.value = unicoRegistro.name;
+            option.setAttribute('data-id', unicoRegistro.id);
+            list_Centro.appendChild(option);
 
-        list_Centro.appendChild(fragment);
+            // Establecer y deshabilitar el input
+            inputCentro.value = unicoRegistro.name;
+            inputCentro.disabled = true;
 
-        // 9. Actualizar mensaje de ayuda si existe
-        const helpText = document.getElementById('centro_trabajo_help');
-        if (helpText) {
-            helpText.textContent = `${data.data.length} centros de trabajo disponibles`;
+            // Opcional: Mostrar indicador visual
+            inputCentro.classList.add('bg-light');
+
+            // Opcional: Agregar tooltip
+            inputCentro.title = 'Único centro de trabajo disponible';
+
+        } else {
+            // Si hay múltiples registros
+            const fragment = document.createDocumentFragment();
+            data.data.forEach(({ id, name }) => {
+                if (!list_Centro.querySelector(`option[value="${name}"]`)) {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.setAttribute('data-id', id);
+                    fragment.appendChild(option);
+                }
+            });
+            list_Centro.appendChild(fragment);
+
+            // Habilitar el input para selección
+            inputCentro.disabled = false;
+            inputCentro.classList.remove('bg-light');
+            inputCentro.value = ''; // Limpiar valor previo
+            inputCentro.title = 'Seleccione un centro de trabajo';
         }
 
     } catch (error) {
         console.error('Error al cargar centros de trabajo:', error);
         alertify.error('Error al cargar los centros de trabajo');
 
+        // Restablecer elementos en caso de error
         const list_Centro = document.getElementById("list_Centrotrabajo");
+        const inputCentro = document.getElementById("CentroTrabajo");
+
         if (list_Centro) {
             list_Centro.innerHTML = '<option value="">Error al cargar centros de trabajo</option>';
+        }
+        if (inputCentro) {
+            inputCentro.disabled = false;
+            inputCentro.value = '';
+            inputCentro.classList.remove('bg-light');
         }
     }
 }

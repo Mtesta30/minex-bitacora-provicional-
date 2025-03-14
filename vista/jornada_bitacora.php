@@ -616,7 +616,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     </div>
                     <div class="col-xs-3 col-sm-2 col-md-2 col-lg-2" style="margin-top: 25px;">
                         <button type="button" class="btn btn-success" onclick="asignarTurnoMultiple()">
-                            Asignar a Seleccionados
+                            Asignar Turnos
                         </button>
                     </div>
                 </div>
