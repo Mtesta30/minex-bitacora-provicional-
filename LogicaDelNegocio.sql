@@ -559,8 +559,8 @@ BEGIN
             @Identificacion,
             @FechaHora,
             @idBiometrico,
-            @observacion OUTPUT,
-            @tipoMarcacion OUTPUT;
+            @tipoMarcacion OUTPUT,
+            @observacion OUTPUT;
 
         -- 2. Asociar la marcación con el turno programado
         EXEC [dbo].[AsociarMarcacionConTurno]
