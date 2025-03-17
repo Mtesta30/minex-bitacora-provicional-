@@ -136,41 +136,6 @@ function generarDescripcionAuto() {
     }
 }
 
-// Función para calcular la duración entre dos horas
-function calcularDuracion(horaInicio, horaFin) {
-    if (!horaInicio || !horaFin) return false;
-
-    // Convertir a minutos para calcular diferencia
-    let [h1, m1] = horaInicio.split(':').map(Number);
-    let [h2, m2] = horaFin.split(':').map(Number);
-
-    let minInicio = h1 * 60 + m1;
-    let minFin = h2 * 60 + m2;
-
-    // Si hora fin es menor, asumimos que cruza la medianoche
-    if (minFin < minInicio) {
-        minFin += 24 * 60; // Añadimos 24 horas
-    }
-
-    let difMinutos = minFin - minInicio;
-    let horas = Math.floor(difMinutos / 60);
-    let minutos = difMinutos % 60;
-
-    // Restablecer el color del borde
-    document.getElementById('FechaInicial_turno').style.borderColor = '#ccc';
-    document.getElementById('FechaFinal_turno').style.borderColor = '#ccc';
-
-    // Formatear para el campo duración
-    document.getElementById('Duracion_turno').value =
-        `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
-
-    // Generar descripción automática solo si el checkbox está marcado 
-    if (document.getElementById('descripcion_auto')?.checked) {
-        generarDescripcionAuto();
-    }
-
-}
-
 // Funciones para las acciones
 async function get_crear_turno() {
     let FechaInicial_turno = document.getElementById("FechaInicial_turno").value;
@@ -256,6 +221,299 @@ function eliminarTurno(idTurno) {
             });
     }
 }
+
+/**
+ * Calcula la duración entre las horas de inicio y fin del turno
+ * y habilita/deshabilita el checkbox de descanso según corresponda
+ */
+function calcularDuracion(horaInicio, horaFin) {
+    const incluirDescanso = document.getElementById('incluir_descanso');
+
+    // Limpiar y deshabilitar checkbox si no hay horas completas
+    if (!horaInicio || !horaFin) {
+        incluirDescanso.checked = false;
+        incluirDescanso.disabled = true;
+        document.getElementById('campos_descanso').style.display = 'none';
+        limpiarCamposDescanso();
+        return;
+    }
+
+    // Convertir horas a objetos Date para facilitar comparaciones
+    const inicio = new Date(`2000-01-01T${horaInicio}`);
+    const fin = new Date(`2000-01-01T${horaFin}`);
+
+    let diferencia = fin - inicio;
+
+    // Ajustar si el turno cruza medianoche
+    if (diferencia < 0) {
+        diferencia += 24 * 60 * 60 * 1000; // 24 horas en milisegundos
+    }
+
+    // Calcular horas y minutos
+    const horas = Math.floor(diferencia / (1000 * 60 * 60));
+    const minutos = Math.floor((diferencia % (1000 * 60 * 60)) / (1000 * 60));
+
+    // Actualizar campo de duración
+    document.getElementById('Duracion_turno').value =
+        `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
+
+    // Habilitar checkbox si hay un rango válido
+    incluirDescanso.disabled = false;
+
+    // Si hay un periodo de descanso activo, actualizar los rangos permitidos
+    if (incluirDescanso.checked) {
+        validarRangoDescanso();
+    }
+
+    // Actualizar descripción automática si está activada
+    if (document.getElementById('descripcion_auto')?.checked) {
+        generarDescripcionAuto();
+    }
+}
+
+/**
+ * Controla la visualización de los campos de descanso
+ * y valida que solo se puedan mostrar si hay horas de turno seleccionadas
+ */
+/**
+ * Controla la visualización de los campos de descanso
+ */
+function toggleDescansoFields() {
+    const incluirDescanso = document.getElementById('incluir_descanso');
+    const camposDescanso = document.getElementById('campos_descanso');
+    const horaInicio = document.getElementById('FechaInicial_turno').value;
+    const horaFin = document.getElementById('FechaFinal_turno').value;
+
+    // Verificar si hay horas seleccionadas
+    if (!horaInicio || !horaFin) {
+        incluirDescanso.checked = false;
+        incluirDescanso.disabled = true;
+        camposDescanso.style.display = 'none';
+        limpiarCamposDescanso();
+        alertify.warning('Debe seleccionar hora de entrada y salida antes de incluir descanso');
+        return;
+    }
+
+    // Mostrar/ocultar campos según estado del checkbox
+    if (incluirDescanso.checked) {
+        camposDescanso.style.display = 'block';
+        validarRangoDescanso();
+    } else {
+        camposDescanso.style.display = 'none';
+        limpiarCamposDescanso();
+        // Recalcular duración efectiva (sin descanso) cuando se desmarca el checkbox
+        recalcularDuracionEfectiva();
+    }
+}
+
+/**
+ * Valida que las horas de descanso estén dentro del rango del turno
+ * y establece los límites adecuados en los inputs
+ */
+function validarRangoDescanso() {
+    const horaInicio = document.getElementById('FechaInicial_turno').value;
+    const horaFin = document.getElementById('FechaFinal_turno').value;
+    const inicioDescanso = document.getElementById('inicio_descanso');
+    const finDescanso = document.getElementById('fin_descanso');
+
+    if (!horaInicio || !horaFin) {
+        alertify.warning('Primero debe establecer las horas del turno');
+        return false;
+    }
+
+    // Establecer límites en los inputs de descanso
+    inicioDescanso.min = horaInicio;
+    inicioDescanso.max = horaFin;
+    finDescanso.min = horaInicio;
+    finDescanso.max = horaFin;
+
+    // Validar y ajustar valores actuales si están fuera de rango
+    if (inicioDescanso.value) {
+        if (inicioDescanso.value < horaInicio) {
+            inicioDescanso.value = horaInicio;
+            alertify.warning('La hora de inicio del descanso se ha ajustado al inicio del turno');
+        } else if (inicioDescanso.value > horaFin) {
+            inicioDescanso.value = horaInicio;
+            alertify.warning('La hora de inicio del descanso se ha ajustado al inicio del turno');
+        }
+    }
+
+    if (finDescanso.value) {
+        if (finDescanso.value < horaInicio) {
+            finDescanso.value = horaFin;
+            alertify.warning('La hora de fin del descanso se ha ajustado al fin del turno');
+        } else if (finDescanso.value > horaFin) {
+            finDescanso.value = horaFin;
+            alertify.warning('La hora de fin del descanso se ha ajustado al fin del turno');
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Calcula la duración del periodo de descanso
+ * y actualiza la duración efectiva del turno
+ */
+function calcularDuracionDescanso() {
+    const inicioDescanso = document.getElementById('inicio_descanso').value;
+    const finDescanso = document.getElementById('fin_descanso').value;
+
+    if (!inicioDescanso || !finDescanso) {
+        document.getElementById('duracion_descanso').value = '00:00';
+        return;
+    }
+
+    // Validar que las horas de descanso estén dentro del rango del turno
+    if (!validarRangoDescanso()) return;
+
+    // Calcular duración del descanso
+    const inicio = new Date(`2000-01-01T${inicioDescanso}`);
+    const fin = new Date(`2000-01-01T${finDescanso}`);
+
+    let diferencia = fin - inicio;
+
+    // Ajustar si cruza medianoche (aunque normalmente no debería pasar con las validaciones)
+    if (diferencia < 0) {
+        diferencia += 24 * 60 * 60 * 1000;
+    }
+
+    // Calcular horas y minutos
+    const horas = Math.floor(diferencia / (1000 * 60 * 60));
+    const minutos = Math.floor((diferencia % (1000 * 60 * 60)) / (1000 * 60));
+
+    // Actualizar campo de duración del descanso
+    document.getElementById('duracion_descanso').value =
+        `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
+
+    recalcularDuracionEfectiva();
+}
+
+/**
+ * Recalcula la duración efectiva del turno restando el tiempo de descanso
+ * y actualiza el campo de duración
+ */
+function recalcularDuracionEfectiva() {
+    const incluirDescanso = document.getElementById('incluir_descanso');
+
+    // Obtener los valores necesarios
+    const horaInicio = document.getElementById('FechaInicial_turno').value;
+    const horaFin = document.getElementById('FechaFinal_turno').value;
+
+    // Calcular duración total del turno sin considerar descanso
+    if (!horaInicio || !horaFin) return;
+
+    const inicio = new Date(`2000-01-01T${horaInicio}`);
+    const fin = new Date(`2000-01-01T${horaFin}`);
+
+    let duracionTotal = fin - inicio;
+    if (duracionTotal < 0) {
+        duracionTotal += 24 * 60 * 60 * 1000;
+    }
+
+    // Si el checkbox está marcado, restar el descanso
+    if (incluirDescanso.checked) {
+        const duracionDescanso = document.getElementById('duracion_descanso').value;
+
+        if (duracionDescanso && duracionDescanso !== '00:00') {
+            // Convertir duración del descanso a milisegundos
+            const [horasDescanso, minutosDescanso] = duracionDescanso.split(':').map(Number);
+            const descansoMs = (horasDescanso * 60 * 60 + minutosDescanso * 60) * 1000;
+
+            // Restar el tiempo de descanso
+            duracionTotal -= descansoMs;
+        }
+    }
+
+    // Calcular horas y minutos efectivos
+    const horasEfectivas = Math.floor(duracionTotal / (1000 * 60 * 60));
+    const minutosEfectivos = Math.floor((duracionTotal % (1000 * 60 * 60)) / (1000 * 60));
+
+    // Actualizar campo de duración del turno
+    document.getElementById('Duracion_turno').value =
+        `${horasEfectivas.toString().padStart(2, '0')}:${minutosEfectivos.toString().padStart(2, '0')}`;
+
+    // Actualizar la descripción automática si está activada
+    if (document.getElementById('descripcion_auto')?.checked) {
+        generarDescripcionAuto();
+    }
+}
+
+/**
+ * Limpia todos los campos relacionados con el periodo de descanso
+ */
+function limpiarCamposDescanso() {
+    document.getElementById('inicio_descanso').value = '';
+    document.getElementById('fin_descanso').value = '';
+    document.getElementById('duracion_descanso').value = '';
+    document.getElementById('descripcion_descanso').value = '';
+}
+
+/**
+ * Modificación de la función existente para incluir información del descanso
+ */
+function generarDescripcionAuto() {
+    const checkboxAuto = document.getElementById('descripcion_auto');
+    if (!checkboxAuto.checked) return;
+
+    const horaInicio = document.getElementById('FechaInicial_turno').value;
+    const horaFin = document.getElementById('FechaFinal_turno').value;
+    const incluirDescanso = document.getElementById('incluir_descanso').checked;
+
+    if (horaInicio && horaFin) {
+        let descripcion = `Turno (${horaInicio} - ${horaFin})`;
+
+        if (incluirDescanso) {
+            const duracionDescanso = document.getElementById('duracion_descanso').value;
+            if (duracionDescanso && duracionDescanso !== '00:00') {
+                descripcion += ` con ${duracionDescanso} de descanso`;
+            }
+        }
+
+        document.getElementById('Nombre_turno').value = descripcion;
+    }
+}
+
+/**
+ * Función para inicializar eventos adicionales cuando se carga la página
+ */
+document.addEventListener('DOMContentLoaded', function () {
+    // Asignar eventos para los campos de descanso
+    const inicioDescanso = document.getElementById('inicio_descanso');
+    const finDescanso = document.getElementById('fin_descanso');
+    const descripcionDescanso = document.getElementById('descripcion_descanso');
+
+    // Configurar evento para cuando cambie el inicio del descanso
+    if (inicioDescanso) {
+        inicioDescanso.addEventListener('change', function () {
+            calcularDuracionDescanso();
+        });
+    }
+
+    // Configurar evento para cuando cambie el fin del descanso
+    if (finDescanso) {
+        finDescanso.addEventListener('change', function () {
+            calcularDuracionDescanso();
+        });
+    }
+
+    // Configurar evento para cuando cambie la descripción y esté en modo automático
+    if (descripcionDescanso) {
+        descripcionDescanso.addEventListener('change', function () {
+            if (document.getElementById('descripcion_auto')?.checked) {
+                generarDescripcionAuto();
+            }
+        });
+    }
+
+    // Inicializar estado del checkbox de descanso
+    const incluirDescanso = document.getElementById('incluir_descanso');
+    if (incluirDescanso) {
+        incluirDescanso.disabled = true;
+    }
+});
+
+
 
 /*==============================================
     🕕 SUBMÓDULO ASIGNAR TURNOS 🕕

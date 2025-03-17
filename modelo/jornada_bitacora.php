@@ -63,7 +63,7 @@ if (isset($_GET['band'])) {
         $Cargo = ENCR::descript($list_record['Cargo']);
         $Usuario = isset($list_record['Usuario']) ? ENCR::descript($list_record['Usuario']) : null;
 
-        $sql = "SELECT * FROM biometrico.dbo.fnObtenerHorasTrabajadas(?, ?, 'bio_calle 13', ?)
+        $sql = "SELECT * FROM fnObtenerHorasTrabajadas(?, ?, 'BIOPRADERA', ?)
                 WHERE HorasTrabajadas != 'Sin Salida';";
         $params = array($FechaInicial, $FechaFinal, $Usuario);
         $res = sqlsrv_query($conn, $sql, $params);
@@ -264,14 +264,14 @@ if (isset($_GET['band'])) {
             }
 
             // Log para debugging
-            log_debug("Centros de trabajo recuperados", array(
+            /* log_debug("Centros de trabajo recuperados", array(
                 'cantidad' => count($data),
                 'centrosPermitidos' => count($centrosTrabajo)
-            ));
+            )); */
 
             $json = respuestaExito($data, 'Centros de trabajo obtenidos correctamente');
         } catch (Exception $e) {
-            log_debug("Error en get_CentrosDeTrabajo", array('error' => $e->getMessage()));
+            // log_debug("Error en get_CentrosDeTrabajo", array('error' => $e->getMessage()));
             $json = respuestaError('Error al procesar la consulta: ' . $e->getMessage());
         }
     }

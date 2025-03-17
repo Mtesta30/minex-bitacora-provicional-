@@ -495,15 +495,16 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
             </div>
         </div>
 
+
         <div class="collapse fade" id="crear_t" tabindex="-1" role="dialog" aria-labelledby="collapse" aria-hidden="true">
             <div class="container-fluid">
-                <div class="row">
-                    <h2 class="col-xs-12">CREAR TURNO TRABAJO</h2>
-                </div>
-                <div class="row">
+                <h2 class="text-center mb-4">CREAR TURNO TRABAJO</h2>
+
+                <!-- Primera fila: Datos principales del turno -->
+                <div class="row mb-3">
                     <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
                         <div class="form-group">
-                            <label for="descripcion_auto">Nombre del turno:</label>
+                            <label for="Nombre_turno">Nombre del turno:</label>
                             <div class="input-group">
                                 <span class="input-group-addon">
                                     <input type="checkbox" id="descripcion_auto" onchange="toggleDescripcionMode()">
@@ -514,27 +515,79 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                             <small class="text-muted" id="descripcion_help">Introduce manualmente el nombre del turno</small>
                         </div>
                     </div>
-                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2">
+                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
                         <label>Hora Entrada:</label>
-                        <input class="form-control" type="time" id="FechaInicial_turno" onchange="calcularDuracion(this.value, document.getElementById('FechaFinal_turno').value)">
+                        <input class="form-control" type="time" id="FechaInicial_turno"
+                            onchange="calcularDuracion(this.value, document.getElementById('FechaFinal_turno').value)">
                     </div>
-                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2">
+                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
                         <label>Hora Salida:</label>
-                        <input class="form-control" type="time" id="FechaFinal_turno" onchange="calcularDuracion(document.getElementById('FechaInicial_turno').value, this.value)">
+                        <input class="form-control" type="time" id="FechaFinal_turno"
+                            onchange="calcularDuracion(document.getElementById('FechaInicial_turno').value, this.value)">
                     </div>
-                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2">
+                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
                         <label>Duración:</label>
-                        <input class="form-control" type="time" id="Duracion_turno" readonly style="background-color: #f9f9f9;">
-                    </div>
-                    <div class="col-xs-12 col-sm-2 col-md-2 col-lg-2" style="margin-top: 25px;">
-                        <button type="button" id="button_crear_t" class="btn btn-primary" onclick="get_crear_turno()">Crear Turno</button>
+                        <input class="form-control" type="time" id="Duracion_turno" readonly
+                            style="background-color: #f9f9f9;">
                     </div>
                 </div>
-            </div><br>
-            <!-- <h2>Turnos Existentes:</h2> -->
-            <div class="table-responsive" style="text-align: center; margin: 0 auto;">
-                <div id="div_tabla_turnos">
-                    <!-- La tabla se mostrará centrada dentro de este div -->
+
+                <!-- Segunda fila: Checkbox de descanso -->
+                <div class="row mb-3">
+                    <div class="col-xs-12">
+                        <div class="form-group">
+                            <div class="checkbox">
+                                <label>
+                                    <input type="checkbox" id="incluir_descanso" onchange="toggleDescansoFields()">
+                                    <i class="glyphicon glyphicon-time" style="margin-right: 8px;"></i>
+                                    Incluir período de descanso
+                                </label>
+                                <small class="text-muted d-block">Define un intervalo de descanso dentro del turno</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tercera fila: Campos de descanso (inicialmente ocultos) -->
+                <div id="campos_descanso" class="row mb-3" style="display: none;">
+                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
+                        <label>Inicio Descanso:</label>
+                        <input class="form-control" type="time" id="inicio_descanso"
+                            onchange="calcularDuracionDescanso()">
+                    </div>
+                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
+                        <label>Fin Descanso:</label>
+                        <input class="form-control" type="time" id="fin_descanso"
+                            onchange="calcularDuracionDescanso()">
+                    </div>
+                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
+                        <label>Duración Descanso:</label>
+                        <input class="form-control" type="time" id="duracion_descanso" readonly
+                            style="background-color: #f9f9f9;">
+                    </div>
+                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
+                        <label>Descripción:</label>
+                        <input class="form-control" type="text" id="descripcion_descanso"
+                            placeholder="Ej: Almuerzo, Refrigerio...">
+                    </div>
+                </div><br>
+
+                <!-- Cuarta fila: Botón crear -->
+                <div class="row mb-4">
+                    <div class="col-xs-12 text-center">
+                        <button type="button" id="button_crear_t" class="btn btn-primary btn-lg"
+                            onclick="get_crear_turno()">
+                            <i class="glyphicon glyphicon-time"></i> Crear Turno
+                        </button>
+                    </div>
+                </div>
+
+                <h3 class="mb-4">TURNOS</h3>
+                <!-- Tabla de turnos existentes -->
+                <div class="table-responsive">
+                    <div id="div_tabla_turnos" class="text-center">
+                        <!-- La tabla se mostrará aquí -->
+                    </div>
                 </div>
             </div>
         </div>
