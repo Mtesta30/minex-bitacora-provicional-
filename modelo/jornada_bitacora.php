@@ -212,16 +212,16 @@ if (isset($_GET['band'])) {
             }
 
             // 10. Debug log
-            log_debug("Usuarios recuperados", array(
-                'cantidad' => count($data),
-                'centrosTrabajo' => count($centrosTrabajo),
-                'filtro' => $texto_busqueda
-            ));
+            // log_debug("Usuarios recuperados", array(
+            //     'cantidad' => count($data),
+            //     'centrosTrabajo' => count($centrosTrabajo),
+            //     'filtro' => $texto_busqueda
+            // ));
 
             // 11. Retornar respuesta
             $json = respuestaExito($data, 'Usuarios obtenidos correctamente');
         } catch (Exception $e) {
-            log_debug("Error en get_Usuarios", array('error' => $e->getMessage()));
+            // log_debug("Error en get_Usuarios", array('error' => $e->getMessage()));
             $json = respuestaError('Error al procesar la consulta: ' . $e->getMessage());
         }
     }
