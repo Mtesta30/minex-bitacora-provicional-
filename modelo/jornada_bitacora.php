@@ -278,7 +278,7 @@ if (isset($_GET['band'])) {
 
 
     if ($_GET['band'] == 'save_turno') {
-        // Obtener los datos del formulario enviados por AJAX
+        // Obtener los datos básicos del turno
         $Nombre_turno = $list_record['Nombre_turno'];
         $FechaInicial_turno = $list_record['FechaInicial_turno'];
         $FechaFinal_turno = $list_record['FechaFinal_turno'];
@@ -292,43 +292,106 @@ if (isset($_GET['band'])) {
         $duracionHoras = $horas + ($minutos / 60);
         $duracionHorasRedondeada = round($duracionHoras, 2);
 
+        // Verificar datos de descanso
+        $incluirDescanso = isset($list_record['incluirDescanso']) && $list_record['incluirDescanso'] ? true : false;
+        $inicioDescanso = $incluirDescanso && isset($list_record['inicioDescanso']) ? $list_record['inicioDescanso'] : null;
+        $finDescanso = $incluirDescanso && isset($list_record['finDescanso']) ? $list_record['finDescanso'] : null;
+        $duracionDescansoMinutos = null;
+        $descripcionDescanso = null;
+
+        // Calcular duración del descanso en minutos si está incluido
+        if ($incluirDescanso && isset($list_record['duracionDescanso']) && $list_record['duracionDescanso']) {
+            $partesDescanso = explode(':', $list_record['duracionDescanso']);
+            $horasDescanso = intval($partesDescanso[0]);
+            $minutosDescanso = intval($partesDescanso[1]);
+            $duracionDescansoMinutos = ($horasDescanso * 60) + $minutosDescanso;
+            $descripcionDescanso = isset($list_record['descripcionDescanso']) ? $list_record['descripcionDescanso'] : null;
+        }
+
         try {
-            // Preparar y ejecutar el procedimiento almacenado
-            $sql = "EXEC  SAVE_Turnos 
+            // Preparar y ejecutar el procedimiento almacenado con posibles parámetros adicionales
+            if ($incluirDescanso) {
+                $sql = "EXEC SAVE_Turnos 
+                @descripcion = ?, 
+                @horaInicio = ?, 
+                @horaFin = ?, 
+                @duracionHoras = ?,
+                @idUsuario = ?,
+                @inicioDescanso = ?,
+                @finDescanso = ?,
+                @duracionDescansoMinutos = ?,
+                @descripcionDescanso = ?";
+
+                $params = array(
+                    $Nombre_turno,
+                    $FechaInicial_turno,
+                    $FechaFinal_turno,
+                    $duracionHorasRedondeada,
+                    $idusuario,
+                    $inicioDescanso,
+                    $finDescanso,
+                    $duracionDescansoMinutos,
+                    $descripcionDescanso
+                );
+            } else {
+                $sql = "EXEC SAVE_Turnos 
                 @descripcion = ?, 
                 @horaInicio = ?, 
                 @horaFin = ?, 
                 @duracionHoras = ?,
                 @idUsuario = ?";
 
-            $params = array(
-                $Nombre_turno,
-                $FechaInicial_turno,
-                $FechaFinal_turno,
-                $duracionHorasRedondeada,
-                $idusuario
-            );
+                $params = array(
+                    $Nombre_turno,
+                    $FechaInicial_turno,
+                    $FechaFinal_turno,
+                    $duracionHorasRedondeada,
+                    $idusuario
+                );
+            }
 
             $stmt = sqlsrv_prepare($conn, $sql, $params);
 
             if (sqlsrv_execute($stmt)) {
                 // Éxito al ejecutar el procedimiento
-                $json = 0; // Éxito
+                $json = respuestaExito(
+                    array('idTurno' => sqlsrv_get_field($stmt, 0)),
+                    'Turno creado correctamente'
+                );
             } else {
                 // Error al ejecutar el procedimiento
                 $errors = sqlsrv_errors();
-                // Código de error específico
-                if (strpos($errors[0]['message'], 'duración mínima') !== false) {
-                    $json = 1; // Error de duración mínima
-                } else if (strpos($errors[0]['message'], 'duración proporcionada') !== false) {
-                    $json = 2; // Error en cálculo de duración
-                } else {
-                    $json = 3; // Error general
+                $errorMessage = isset($errors[0]['message']) ? $errors[0]['message'] : 'Error desconocido';
+
+                // Códigos de error específicos según el mensaje
+                $errorCode = 0;
+                $codigo = 3; // Error general por defecto
+
+                if (strpos($errorMessage, 'duración mínima') !== false) {
+                    $errorCode = 1;
+                    $codigo = 1; // Error de duración mínima
+                } else if (strpos($errorMessage, 'duración proporcionada') !== false) {
+                    $errorCode = 2;
+                    $codigo = 2; // Error en cálculo de duración
+                } else if (strpos($errorMessage, 'período de descanso debe estar dentro') !== false) {
+                    $errorCode = 3;
+                    $codigo = 3; // Error en período de descanso fuera de rango
+                } else if (strpos($errorMessage, 'cruzan la medianoche') !== false) {
+                    $errorCode = 4;
+                    $codigo = 4; // Error con turno que cruza medianoche
+                } else if (strpos($errorMessage, 'Ya existe un turno') !== false) {
+                    $errorCode = 5;
+                    $codigo = 5; // Error turno duplicado
                 }
+
+                $json = respuestaError(
+                    'Error al crear turno: ' . $errorMessage,
+                    array('code' => $errorCode)
+                );
             }
         } catch (Exception $e) {
-            $json = 3; // Error general
-
+            // log_debug("Error en save_turno", array('error' => $e->getMessage()));
+            $json = respuestaError('Error interno al procesar el turno: ' . $e->getMessage());
         }
     }
 
@@ -346,6 +409,73 @@ if (isset($_GET['band'])) {
             array_push($data, $registro);
         }
         $json = (json_encode($data));
+    }
+
+    if ($_GET['band'] == 'get_TurnosDescansos') {
+        try {
+            // Consulta modificada para incluir información de los descansos
+            $sql = "SELECT t.idTurno, t.descripcion, t.horaInicio, t.horaFin, t.duracionHoras, 
+                  td.horaInicio as inicioDescanso, td.horaFin as finDescanso, 
+                  td.duracionMinutos as duracionDescansoMinutos,
+                  td.descripcion as descripcionDescanso
+                FROM turnos t 
+                LEFT JOIN turnosDescansos td ON t.idTurno = td.idTurno
+                ORDER BY t.descripcion";
+
+            $res = sqlsrv_query($conn, $sql);
+
+            if ($res === false) {
+                throw new Exception('Error al ejecutar la consulta: ' . print_r(sqlsrv_errors(), true));
+            }
+
+            $data = [];
+
+            while ($aa = sqlsrv_fetch_array($res)) {
+                $consecutivo = $aa['idTurno'];
+                $Nombre = $aa['descripcion'];
+                $horaInicio = substr(date_format($aa['horaInicio'], 'H:i:s'), 0, 5);
+                $horaFin = substr(date_format($aa['horaFin'], 'H:i:s'), 0, 5);
+                $duracion = sprintf('%02d:%02d', floor($aa['duracionHoras']), round(($aa['duracionHoras'] - floor($aa['duracionHoras'])) * 60));
+
+                // Procesar información de descanso si existe
+                $infoDescanso = null;
+                if ($aa['inicioDescanso'] !== null) {
+                    $inicioDescanso = substr(date_format($aa['inicioDescanso'], 'H:i:s'), 0, 5);
+                    $finDescanso = substr(date_format($aa['finDescanso'], 'H:i:s'), 0, 5);
+                    $duracionDescansoMinutos = $aa['duracionDescansoMinutos'];
+
+                    // Convertir minutos a formato HH:MM
+                    $horasDescanso = floor($duracionDescansoMinutos / 60);
+                    $minutosDescanso = $duracionDescansoMinutos % 60;
+                    $duracionDescansoFormateada = sprintf('%02d:%02d', $horasDescanso, $minutosDescanso);
+
+                    $descripcionDescanso = $aa['descripcionDescanso'] ?: '';
+
+                    $infoDescanso = [
+                        'inicio' => $inicioDescanso,
+                        'fin' => $finDescanso,
+                        'duracion' => $duracionDescansoFormateada,
+                        'descripcion' => $descripcionDescanso
+                    ];
+                }
+
+                $registro = [
+                    'id' => $consecutivo,
+                    'name' => $Nombre,
+                    'horaInicio' => $horaInicio,
+                    'horaFin' => $horaFin,
+                    'duracion' => $duracion,
+                    'descanso' => $infoDescanso
+                ];
+
+                array_push($data, $registro);
+            }
+
+            $json = respuestaExito($data, 'Turnos recuperados correctamente');
+        } catch (Exception $e) {
+            log_debug("Error en cargar_turnos", array('error' => $e->getMessage()));
+            $json = respuestaError('Error al cargar turnos: ' . $e->getMessage());
+        }
     }
 
 

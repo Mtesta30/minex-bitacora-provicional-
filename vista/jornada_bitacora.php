@@ -4,7 +4,8 @@ require_once '../../conectartraz.php';
 // require_once '../../conectar.php';
 
 // Usuario de prueba
-$_SESSION['idUsuario'] = 'd8c916d4-7b13-40a7-ad8c-38bae6f76429';
+$_SESSION['idUsuario'] = 'E67D0C54-938B-421C-9D95-826E9AC4AD2C'; // JONATHAN BALAGUERA CARVAJALINO
+// $_SESSION['idUsuario'] = 'd8c916d4-7b13-40a7-ad8c-38bae6f76429'; // EMERSON JIMENEZ
 
 // Permisos del sistema
 $_SESSION['permisos_todos'] = array(
@@ -380,11 +381,10 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     <h2 class="">CONSULTA BITACORA POR MINA</h2>
                     <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
                         <label for="CentroTrabajoMina">Centro de Trabajo:</label>
-                        <input type="text" id="CentroTrabajoMina" list="list_CentrotrabajoMina" class="form-control"
-                            value="Dinastia"
-                            disabled />
-                        <datalist id="list_CentrotrabajoMina">
-                            <option value="Dinastia" data-id="UHJiK3dHN25oWWZuU3AyVlVQS1B6SC9KelVLUmY4M2IvWU5zbXVkRGlqMVo2aWpZa2Jic0hwSjdWdnArYW14TQ=="></option>
+                        <input type="text" id="CentroTrabajoMina" list="list_Centrotrabajo"
+                            onkeyup="list_Centrotrabajo(this)" class="form-control" />
+                        <datalist id="list_Centrotrabajo">
+                            <!-- <option value="Dinastia" data-id="UHJiK3dHN25oWWZuU3AyVlVQS1B6SC9KelVLUmY4M2IvWU5zbXVkRGlqMVo2aWpZa2Jic0hwSjdWdnArYW14TQ=="></option> -->
                         </datalist>
                     </div>
                     <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
@@ -532,57 +532,68 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     </div>
                 </div>
 
-                <!-- Segunda fila: Checkbox de descanso -->
-                <div class="row mb-3">
-                    <div class="col-xs-12">
-                        <div class="form-group">
+                <!-- Sección de descanso agrupada en un contenedor -->
+                <div class="panel panel-default" style="border: 1px solid #ddd; border-radius: 4px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <div class="panel-heading" style="background-color: #f5f5f5; border-bottom: 1px solid #ddd; padding: 10px 15px;">
+                        <!-- Checkbox de descanso -->
+                        <div class="form-group" style="margin-bottom: 0;">
                             <div class="checkbox">
-                                <label>
-                                    <input type="checkbox" id="incluir_descanso" onchange="toggleDescansoFields()">
-                                    <i class="glyphicon glyphicon-time" style="margin-right: 8px;"></i>
-                                    Incluir período de descanso
+                                <label style="display: flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" id="incluir_descanso" onchange="toggleDescansoFields()" style="margin-right: 5px;">
+                                    <i class="glyphicon glyphicon-time" style="margin-right: 8px; color: #337ab7;"></i>
+                                    <span style="font-weight: 600; color: #333;">Incluir período de descanso</span>
                                 </label>
                                 <small class="text-muted d-block">Define un intervalo de descanso dentro del turno</small>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Tercera fila: Campos de descanso (inicialmente ocultos) -->
-                <div id="campos_descanso" class="row mb-3" style="display: none;">
-                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
-                        <label>Inicio Descanso:</label>
-                        <input class="form-control" type="time" id="inicio_descanso"
-                            onchange="calcularDuracionDescanso()">
+                    <!-- Campos de descanso (inicialmente ocultos) -->
+                    <div id="campos_descanso" class="panel-body" style="display: none; padding: 15px; background-color: #f9f9f9;">
+                        <div class="row">
+                            <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
+                                <div class="form-group">
+                                    <label>Inicio Descanso:</label>
+                                    <input class="form-control" type="time" id="inicio_descanso"
+                                        onchange="calcularDuracionDescanso()">
+                                </div>
+                            </div>
+                            <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
+                                <div class="form-group">
+                                    <label>Fin Descanso:</label>
+                                    <input class="form-control" type="time" id="fin_descanso"
+                                        onchange="calcularDuracionDescanso()">
+                                </div>
+                            </div>
+                            <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
+                                <div class="form-group">
+                                    <label>Duración Descanso:</label>
+                                    <input class="form-control" type="time" id="duracion_descanso" readonly
+                                        style="background-color: #f5f5f5;">
+                                </div>
+                            </div>
+                            <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
+                                <div class="form-group">
+                                    <label>Descripción:</label>
+                                    <input class="form-control" type="text" id="descripcion_descanso"
+                                        placeholder="Ej: Almuerzo, Refrigerio...">
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
-                        <label>Fin Descanso:</label>
-                        <input class="form-control" type="time" id="fin_descanso"
-                            onchange="calcularDuracionDescanso()">
-                    </div>
-                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
-                        <label>Duración Descanso:</label>
-                        <input class="form-control" type="time" id="duracion_descanso" readonly
-                            style="background-color: #f9f9f9;">
-                    </div>
-                    <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
-                        <label>Descripción:</label>
-                        <input class="form-control" type="text" id="descripcion_descanso"
-                            placeholder="Ej: Almuerzo, Refrigerio...">
-                    </div>
-                </div><br>
+                </div>
 
                 <!-- Cuarta fila: Botón crear -->
                 <div class="row mb-4">
                     <div class="col-xs-12 text-center">
-                        <button type="button" id="button_crear_t" class="btn btn-primary btn-lg"
+                        <button type="button" id="button_crear_t" class="btn btn-primary"
                             onclick="get_crear_turno()">
                             <i class="glyphicon glyphicon-time"></i> Crear Turno
                         </button>
                     </div>
                 </div>
 
-                <h3 class="mb-4">TURNOS</h3>
+                <h3 class="mb-4">TURNOS CREADOS</h3>
                 <!-- Tabla de turnos existentes -->
                 <div class="table-responsive">
                     <div id="div_tabla_turnos" class="text-center">

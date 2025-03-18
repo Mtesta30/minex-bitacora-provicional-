@@ -69,36 +69,109 @@ async function list_Centro_trabajo(object){
 ================================================*/
 
 function cargar_turnosAll() {
-    fetch('../modelo/jornada_bitacora.php?band=cargar_turnos')
-        .then(response => response.json())
+    // Mostrar indicador de carga
+    const tablaTurnos = document.getElementById('div_tabla_turnos');
+    if (tablaTurnos) {
+        tablaTurnos.innerHTML = '<div class="text-center my-3"><i class="glyphicon glyphicon-refresh glyphicon-spin"></i> Cargando turnos...</div>';
+    }
+
+    fetch('../modelo/jornada_bitacora.php?band=get_TurnosDescansos')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Error en la conexión con el servidor');
+            }
+            return response.json();
+        })
         .then(data => {
-            let tablaTurnos = document.getElementById('div_tabla_turnos');
+            // Verificar formato de respuesta (nuevo formato o antiguo)
+            let turnos = [];
+
+            if (data.hasOwnProperty('success')) {
+                // Nuevo formato de respuesta usando respuestaExito/respuestaError
+                if (!data.success) {
+                    throw new Error(data.message || 'Error al cargar los turnos');
+                }
+                turnos = data.data || [];
+            } else {
+                // Formato antiguo (array directo)
+                turnos = data || [];
+            }
+
             let html = '<table class="table table-hover table-condensed table-bordered table-striped" style="margin: 15px;">';
             html += '<thead><tr>' +
                 '<th class="text-center">Descripción</th>' +
                 '<th class="text-center">Hora Inicio</th>' +
                 '<th class="text-center">Hora Fin</th>' +
                 '<th class="text-center">Duración</th>' +
+                '<th class="text-center">Descanso</th>' + // Nueva columna para descanso
                 '<th class="text-center">Acciones</th>' +
                 '</tr></thead><tbody>';
 
-            data.forEach(turno => {
-                html += `<tr>
-                    <td>${turno.name}</td>
-                    <td class="text-center">${turno.horaInicio || '--:--'}</td>
-                    <td class="text-center">${turno.horaFin || '--:--'}</td>
-                    <td class="text-center">${turno.duracion || '--:--'}</td>
-                    <td class="text-center">
-                        <button disabled class="btn btn-xs btn-primary" onclick="editarTurno('${turno.id}')"><i class="glyphicon glyphicon-pencil"></i></button>
-                        <button disabled class="btn btn-xs btn-danger" onclick="eliminarTurno('${turno.id}')"><i class="glyphicon glyphicon-trash"></i></button>
-                    </td>
-                </tr>`;
-            });
+            if (turnos.length === 0) {
+                html += '<tr><td colspan="6" class="text-center">No hay turnos disponibles</td></tr>';
+            } else {
+                turnos.forEach(turno => {
+                    // Formatear la información de descanso
+                    let infoDescanso = '<span class="text-muted">Sin descanso</span>';
+
+                    if (turno.descanso) {
+                        // Si tiene descanso, mostrar en formato bonito con detalles
+                        const descripcion = turno.descanso.descripcion ?
+                            `<small>(${turno.descanso.descripcion})</small>` : '';
+
+                        infoDescanso = `
+                            <span class="label label-info">
+                                ${turno.descanso.inicio} - ${turno.descanso.fin}
+                               
+                            </span>`;
+                    }
+
+                    html += `<tr>
+                        <td>${turno.name}</td>
+                        <td class="text-center">${turno.horaInicio || '--:--'}</td>
+                        <td class="text-center">${turno.horaFin || '--:--'}</td>
+                        <td class="text-center">${turno.duracion || '--:--'}</td>
+                        <td class="text-center">${infoDescanso}</td>
+                        <td class="text-center">
+                            <button disabled class="btn btn-xs btn-primary" onclick="editarTurno('${turno.id}')"><i class="glyphicon glyphicon-pencil"></i></button>
+                            <button disabled class="btn btn-xs btn-danger" onclick="eliminarTurno('${turno.id}')"><i class="glyphicon glyphicon-trash"></i></button>
+                        </td>
+                    </tr>`;
+                });
+            }
 
             html += '</tbody></table>';
-            tablaTurnos.innerHTML = html;
+
+            if (tablaTurnos) {
+                tablaTurnos.innerHTML = html;
+
+                // Inicializar tooltips si hay turnos con descanso
+                if (turnos.some(t => t.descanso)) {
+                    setTimeout(() => {
+                        try {
+                            $('[data-toggle="tooltip"]').tooltip();
+                        } catch (e) {
+                            console.warn('No se pudieron inicializar los tooltips', e);
+                        }
+                    }, 100);
+                }
+            }
         })
-        .catch(error => console.error('Error:', error));
+        .catch(error => {
+            console.error('Error al cargar turnos:', error);
+
+            if (tablaTurnos) {
+                tablaTurnos.innerHTML = `
+                    <div class="alert alert-danger" style="margin: 15px;">
+                        <i class="glyphicon glyphicon-exclamation-sign"></i> 
+                        Error al cargar los turnos: ${error.message}
+                        <br>
+                        <button class="btn btn-sm btn-default mt-2" onclick="cargar_turnosAll()">
+                            <i class="glyphicon glyphicon-refresh"></i> Reintentar
+                        </button>
+                    </div>`;
+            }
+        });
 }
 
 // Función para alternar entre descripción manual y automática
@@ -138,19 +211,19 @@ function generarDescripcionAuto() {
 
 // Funciones para las acciones
 async function get_crear_turno() {
+    // Obtener datos básicos del turno
     let FechaInicial_turno = document.getElementById("FechaInicial_turno").value;
     let FechaFinal_turno = document.getElementById("FechaFinal_turno").value;
     let Nombre_turno = document.getElementById("Nombre_turno").value;
+    let Duracion_turno = document.getElementById("Duracion_turno").value;
 
-    // Validar que todos los campos estén llenos
+    // Validar que todos los campos básicos estén llenos
     if (!FechaInicial_turno || !FechaFinal_turno || !Nombre_turno) {
         alertify.error("Todos los campos son obligatorios");
         return;
     }
 
-    let Duracion_turno = document.getElementById("Duracion_turno").value;
-
-    let url = "../modelo/jornada_bitacora.php?band=save_turno";
+    // Preparar objeto base de parámetros
     let param = {
         FechaInicial_turno: FechaInicial_turno,
         FechaFinal_turno: FechaFinal_turno,
@@ -158,26 +231,120 @@ async function get_crear_turno() {
         Duracion_turno: Duracion_turno,
         idusuario: id_usuario
     };
-    let data = JSON.stringify(param);
-    try {
-        let response = await sendRequest(url, data);
-        // console.log(response);  
-        if (response == 0) {
-            alertify.success('Turno creado correctamente');
-            cargar_turnosAll();
-            document.getElementById('Nombre_turno').value = '';
-            document.getElementById('FechaInicial_turno').value = '';
-            document.getElementById('FechaFinal_turno').value = '';
-            document.getElementById('Duracion_turno').value = '';
-        } else {
-            alertify.error('Hubo un error al crear el turno');
+
+    // Comprobar si se incluye descanso y recopilar sus datos
+    const incluirDescanso = document.getElementById("incluir_descanso").checked;
+    if (incluirDescanso) {
+        const inicioDescanso = document.getElementById("inicio_descanso").value;
+        const finDescanso = document.getElementById("fin_descanso").value;
+        const duracionDescanso = document.getElementById("duracion_descanso").value;
+        const descripcionDescanso = document.getElementById("descripcion_descanso").value;
+
+        // Validar que los campos de descanso necesarios estén llenos
+        if (!inicioDescanso || !finDescanso) {
+            alertify.error("Debe indicar la hora de inicio y fin del descanso");
+            return;
         }
 
-    } catch (error) {
-        console.log(error);
-        alertify.error('Error al crear el turno');
+        // Añadir datos del descanso al objeto de parámetros
+        param.incluirDescanso = true;
+        param.inicioDescanso = inicioDescanso;
+        param.finDescanso = finDescanso;
+        param.duracionDescanso = duracionDescanso;
+        param.descripcionDescanso = descripcionDescanso;
     }
 
+    // Mostrar indicador de carga en el botón
+    const btnCrear = document.getElementById("button_crear_t");
+    const btnTextoOriginal = btnCrear.innerHTML;
+    btnCrear.disabled = true;
+    btnCrear.innerHTML = '<i class="glyphicon glyphicon-refresh glyphicon-spin"></i> Procesando...';
+
+    // Enviar petición al servidor
+    try {
+        let url = "../modelo/jornada_bitacora.php?band=save_turno";
+        let data = JSON.stringify(param);
+        let response = await sendRequest(url, data);
+
+        // Analizar la respuesta
+        let resultado;
+        try {
+            // Intentar parsear como JSON (nuevo formato de respuesta)
+            resultado = JSON.parse(response);
+
+            if (resultado.success) {
+                // Éxito - nuevo formato de respuesta
+                alertify.success(resultado.message || 'Turno creado correctamente');
+                limpiarFormularioTurno();
+                cargar_turnosAll();
+            } else {
+                // Error - nuevo formato de respuesta
+                manejarErrorTurno(resultado.message, resultado.errors?.code);
+            }
+        } catch (parseError) {
+            // La respuesta no es JSON, usar el formato antiguo (códigos numéricos)
+            const codigoRespuesta = parseInt(response);
+
+            if (codigoRespuesta === 0) {
+                // Éxito - formato antiguo
+                alertify.success('Turno creado correctamente');
+                limpiarFormularioTurno();
+                cargar_turnosAll();
+            } else {
+                // Error - formato antiguo
+                manejarErrorTurno(null, codigoRespuesta);
+            }
+        }
+    } catch (error) {
+        console.error("Error en la solicitud:", error);
+        alertify.error('Error al crear el turno: ' + error.message);
+    } finally {
+        // Restaurar el botón independientemente del resultado
+        btnCrear.disabled = false;
+        btnCrear.innerHTML = btnTextoOriginal;
+    }
+
+}
+
+// Función auxiliar para manejar errores específicos
+function manejarErrorTurno(mensaje, codigo) {
+    switch (codigo) {
+        case 1:
+            alertify.error(mensaje || 'Error: La duración mínima del turno es incorrecta');
+            break;
+        case 2:
+            alertify.error(mensaje || 'Error: La duración calculada no coincide con la proporcionada');
+            break;
+        case 3:
+            alertify.error(mensaje || 'Error: El período de descanso debe estar dentro del horario del turno');
+            break;
+        case 4:
+            alertify.error(mensaje || 'Error: El período de descanso no es válido para turnos que cruzan la medianoche');
+            break;
+        case 5:
+            alertify.error(mensaje || 'Error: Ya existe un turno con el mismo horario');
+            break;
+        default:
+            alertify.error(mensaje || 'Hubo un error al crear el turno');
+            break;
+    }
+}
+
+// Función auxiliar para limpiar el formulario completo
+function limpiarFormularioTurno() {
+    // Limpiar campos básicos del turno
+    document.getElementById('Nombre_turno').value = '';
+    document.getElementById('FechaInicial_turno').value = '';
+    document.getElementById('FechaFinal_turno').value = '';
+    document.getElementById('Duracion_turno').value = '';
+
+    // Limpiar campos de descanso
+    document.getElementById('incluir_descanso').checked = false;
+    document.getElementById('campos_descanso').style.display = 'none';
+    limpiarCamposDescanso();
+
+    // Restablecer el estado del checkbox
+    document.getElementById('incluir_descanso').disabled = true;
 }
 
 function editarTurno(idTurno) {

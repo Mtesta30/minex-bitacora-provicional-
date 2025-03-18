@@ -174,13 +174,17 @@ CREATE TABLE [dbo].[Turnos]
     ([idTurno] ASC)
 )
 
-CREATE OR ALTER PROCEDURE [dbo].[SAVE_Turnos]
+CREATE PROCEDURE [dbo].[SAVE_Turnos]
     @descripcion VARCHAR(100),
     @horaInicio TIME(7),
     @horaFin TIME(7),
     @duracionHoras DECIMAL(5,2),
     @activo BIT = 1,
-    @idUsuario UNIQUEIDENTIFIER
+    @idUsuario UNIQUEIDENTIFIER,
+    @inicioDescanso TIME(7) = NULL,
+    @finDescanso TIME(7) = NULL,
+    @duracionDescansoMinutos INT = NULL,
+    @descripcionDescanso VARCHAR(100) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -189,6 +193,7 @@ BEGIN
     DECLARE @duracionCalculada DECIMAL(5,2);
     DECLARE @minutosEntreTurnos INT;
     DECLARE @errorMessage NVARCHAR(255);
+    DECLARE @tieneDescanso BIT = 0;
 
     -- Validar que los datos no sean nulos
     IF @descripcion IS NULL OR @horaInicio IS NULL OR @horaFin IS NULL OR @duracionHoras IS NULL OR @idUsuario IS NULL
@@ -198,19 +203,60 @@ BEGIN
         RETURN -1;
     END
 
+    -- Determinar si se incluye información de descanso
+    IF @inicioDescanso IS NOT NULL AND @finDescanso IS NOT NULL
+    BEGIN
+        SET @tieneDescanso = 1;
+        
+        -- Validar que el período de descanso esté dentro del horario del turno
+        -- Caso 1: Si el turno no cruza la medianoche
+        IF @horaFin > @horaInicio 
+        BEGIN
+            IF NOT (@inicioDescanso >= @horaInicio AND @finDescanso <= @horaFin)
+            BEGIN
+                SET @errorMessage = 'El período de descanso debe estar dentro del horario del turno.';
+                RAISERROR(@errorMessage, 16, 1);
+                RETURN -3;
+            END
+        END
+        -- Caso 2: Si el turno cruza la medianoche
+        ELSE 
+        BEGIN
+            IF NOT ((@inicioDescanso >= @horaInicio OR @inicioDescanso <= @horaFin) AND
+                    (@finDescanso >= @horaInicio OR @finDescanso <= @horaFin) AND
+                    (@inicioDescanso < @finDescanso OR 
+                     (@inicioDescanso > @finDescanso AND @inicioDescanso >= @horaInicio AND @finDescanso <= @horaFin)))
+            BEGIN
+                SET @errorMessage = 'El período de descanso debe estar dentro del horario del turno.';
+                RAISERROR(@errorMessage, 16, 1);
+                RETURN -4;
+            END
+        END
+
+        -- Calcular duración del descanso en minutos si no fue proporcionada
+        IF @duracionDescansoMinutos IS NULL
+        BEGIN
+            IF @finDescanso > @inicioDescanso
+                SET @duracionDescansoMinutos = DATEDIFF(MINUTE, @inicioDescanso, @finDescanso);
+            ELSE -- Si el descanso cruza medianoche
+                SET @duracionDescansoMinutos = DATEDIFF(MINUTE, @inicioDescanso, '23:59:59.9999999') + 
+                                              DATEDIFF(MINUTE, '00:00:00.0000000', @finDescanso) + 1;
+        END
+    END
+
     -- Verificar si ya existe un turno con el mismo horario
     IF EXISTS (
         SELECT 1
-    FROM [dbo].[Turnos]
-    WHERE horaInicio = @horaInicio
-        AND horaFin = @horaFin
-        AND activo = 1
+        FROM [dbo].[Turnos]
+        WHERE horaInicio = @horaInicio
+            AND horaFin = @horaFin
+            AND activo = 1
     )
     BEGIN
         SET @errorMessage = 'Error: Ya existe un turno activo con el mismo horario de ' + 
-                           CAST(@horaInicio AS VARCHAR(8)) + ' a ' + CAST(@horaFin AS VARCHAR(8));
+                          CAST(@horaInicio AS VARCHAR(8)) + ' a ' + CAST(@horaFin AS VARCHAR(8));
         RAISERROR(@errorMessage, 16, 1);
-        RETURN -4;
+        RETURN -5;
     END
 
     -- Calcular los minutos entre la hora de inicio y fin
@@ -218,43 +264,83 @@ BEGIN
         SET @minutosEntreTurnos = DATEDIFF(MINUTE, @horaInicio, @horaFin);
     ELSE -- Si la hora fin es menor (cruza medianoche)
         SET @minutosEntreTurnos = DATEDIFF(MINUTE, @horaInicio, '23:59:59.9999999') + 
-                                  DATEDIFF(MINUTE, '00:00:00.0000000', @horaFin) + 1;
+                                 DATEDIFF(MINUTE, '00:00:00.0000000', @horaFin) + 1;
 
     -- Convertir minutos a horas decimales para comparar con @duracionHoras
     SET @duracionCalculada = CAST((@minutosEntreTurnos / 60.0) AS DECIMAL(5,2));
+
+    -- Ajustar la duración calculada si hay descanso
+    IF @tieneDescanso = 1
+        SET @duracionCalculada = CAST((@minutosEntreTurnos - @duracionDescansoMinutos) / 60.0 AS DECIMAL(5,2));
 
     -- Validar que la duración proporcionada sea correcta con un margen de error de 0.1 horas (6 minutos)
     IF ABS(@duracionHoras - @duracionCalculada) > 0.1
     BEGIN
         SET @errorMessage = 'Error: La duración proporcionada (' + 
-                           CAST(@duracionHoras AS VARCHAR(10)) + 
-                           ' horas) no coincide con el cálculo entre la hora de inicio y fin (' + 
-                           CAST(@duracionCalculada AS VARCHAR(10)) + ' horas).';
+                          CAST(@duracionHoras AS VARCHAR(10)) + 
+                          ' horas) no coincide con el cálculo entre la hora de inicio y fin (' + 
+                          CAST(@duracionCalculada AS VARCHAR(10)) + ' horas).';
         RAISERROR(@errorMessage, 16, 1);
-        RETURN -3;
+        RETURN -6;
     END
 
     BEGIN TRY
         -- Generar nuevo ID para el turno
         SET @idTurno = NEWID();
         
-        -- Insertar el nuevo turno incluyendo idUsuario
+        -- Iniciar transacción
+        BEGIN TRANSACTION;
+        
+        -- Insertar el nuevo turno
         INSERT INTO [dbo].[Turnos]
-        (idTurno, descripcion, horaInicio, horaFin, duracionHoras, activo, idUsuarioCreador)
-    VALUES
-        (@idTurno, @descripcion, @horaInicio, @horaFin, @duracionHoras, @activo, @idUsuario);
+            (idTurno, descripcion, horaInicio, horaFin, duracionHoras, activo, idUsuarioCreador)
+        VALUES
+            (@idTurno, @descripcion, @horaInicio, @horaFin, @duracionHoras, @activo, @idUsuario);
             
+        -- Insertar el registro de descanso si aplica
+        IF @tieneDescanso = 1
+        BEGIN
+            INSERT INTO [dbo].[TurnosDescansos]
+                (idTurnoDescanso, idTurno, horaInicio, horaFin, duracionMinutos, descripcion, activo)
+            VALUES
+                (NEWID(), @idTurno, @inicioDescanso, @finDescanso, @duracionDescansoMinutos, 
+                 ISNULL(@descripcionDescanso, 'Período de descanso'), 1);
+        END
+        
+        COMMIT TRANSACTION;
+        
         -- Retornar el ID del turno creado
         SELECT @idTurno AS idTurno;
         
         RETURN 0; -- Éxito
     END TRY
     BEGIN CATCH
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
+            
         SET @errorMessage = 'Error al guardar el turno: ' + ERROR_MESSAGE();
         RAISERROR(@errorMessage, 16, 1);
         RETURN -100; -- Error general de base de datos
     END CATCH
 END;
+
+/* -------------------------------------------------- */
+/* -------------------------------------------------- */
+/* -------------------------------------------------- */
+CREATE TABLE [dbo].[TurnosDescansos]
+(
+    [idTurnoDescanso] [UNIQUEIDENTIFIER] NOT NULL,
+    [idTurno] [UNIQUEIDENTIFIER] NOT NULL,
+    [horaInicio] [TIME](7) NOT NULL,
+    [horaFin] [TIME](7) NOT NULL,
+    [duracionMinutos] [INT] NOT NULL,
+    [descripcion] [VARCHAR](100) NULL,
+    [activo] [BIT] NOT NULL DEFAULT 1,
+
+    CONSTRAINT [PK_TurnosDescansos] PRIMARY KEY CLUSTERED ([idTurnoDescanso] ASC),
+    CONSTRAINT [FK_TurnosDescansos_Turnos] FOREIGN KEY ([idTurno]) 
+        REFERENCES [dbo].[Turnos] ([idTurno])
+)
 
 /* -------------------------------------------------- */
 /* -------------------------------------------------- */
