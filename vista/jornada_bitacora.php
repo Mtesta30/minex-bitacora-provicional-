@@ -3,9 +3,12 @@ session_start();
 require_once '../../conectartraz.php';
 // require_once '../../conectar.php';
 
+// Usuario admin
+$_SESSION['idUsuario'] = 'c9fa5447-4a96-4309-b6c3-4ffbbdee22fe'; // YUBER LOBO
+
 // Usuario de prueba
 //$_SESSION['idUsuario'] = 'E67D0C54-938B-421C-9D95-826E9AC4AD2C'; // JONATHAN BALAGUERA CARVAJALINO
-$_SESSION['idUsuario'] = 'd8c916d4-7b13-40a7-ad8c-38bae6f76429'; // EMERSON JIMENEZ
+// $_SESSION['idUsuario'] = 'd8c916d4-7b13-40a7-ad8c-38bae6f76429'; // EMERSON JIMENEZ
 
 // Permisos del sistema
 $_SESSION['permisos_todos'] = array(

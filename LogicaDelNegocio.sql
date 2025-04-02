@@ -63,26 +63,27 @@ GO
 /* Vista de todos los Usuarios asociados a un
 centro de trabajo consultando por su idBiometrico     */
 /* -------------------------------------------------- */
-CREATE OR ALTER VIEW [dbo].[vUsuariosCentroTrabajo] AS
-SELECT DISTINCT
-    u.idUsuario,
-    u.NombreCompleto,
-    u.Identificacion,
-    u.Cargo,
-    u.Origen,
-    d.idDestino AS idCentroTrabajo,
-    d.Descripcion AS CentroTrabajo,
-	b.idBiometrico,
-    b.identificadorBiometrico,
-    b.nombreDispositivo AS DispositivoBiometrico
+CREATE OR ALTER VIEW [dbo].[vUsuariosCentroTrabajo]
+AS
+    SELECT DISTINCT
+        u.idUsuario,
+        u.NombreCompleto,
+        u.Identificacion,
+        u.Cargo,
+        u.Origen,
+        d.idDestino AS idCentroTrabajo,
+        d.Descripcion AS CentroTrabajo,
+        b.idBiometrico,
+        b.identificadorBiometrico,
+        b.nombreDispositivo AS DispositivoBiometrico
     --MAX(bit.FechaHora) AS UltimaActividad,
     --COUNT(bit.idBitacora) AS TotalRegistros
-FROM 
-    [dbo].[vUsuariosAppBiometrico] u
-    INNER JOIN [dbo].[Bitacora] bit ON u.Identificacion = bit.Identificacion
-    INNER JOIN [dbo].[Biometricos] b ON bit.idBiometrico = b.idBiometrico
-    INNER JOIN [dbo].[Destino] d ON b.idCentroTrabajo = d.idDestino
-GROUP BY 
+    FROM
+        [dbo].[vUsuariosAppBiometrico] u
+        INNER JOIN [dbo].[Bitacora] bit ON u.Identificacion = bit.Identificacion
+        INNER JOIN [dbo].[Biometricos] b ON bit.idBiometrico = b.idBiometrico
+        INNER JOIN [dbo].[Destino] d ON b.idCentroTrabajo = d.idDestino
+    GROUP BY 
     u.idUsuario, 
     u.NombreCompleto, 
     u.Identificacion, 
@@ -207,7 +208,7 @@ BEGIN
     IF @inicioDescanso IS NOT NULL AND @finDescanso IS NOT NULL
     BEGIN
         SET @tieneDescanso = 1;
-        
+
         -- Validar que el período de descanso esté dentro del horario del turno
         -- Caso 1: Si el turno no cruza la medianoche
         IF @horaFin > @horaInicio 
@@ -223,9 +224,9 @@ BEGIN
         ELSE 
         BEGIN
             IF NOT ((@inicioDescanso >= @horaInicio OR @inicioDescanso <= @horaFin) AND
-                    (@finDescanso >= @horaInicio OR @finDescanso <= @horaFin) AND
-                    (@inicioDescanso < @finDescanso OR 
-                     (@inicioDescanso > @finDescanso AND @inicioDescanso >= @horaInicio AND @finDescanso <= @horaFin)))
+                (@finDescanso >= @horaInicio OR @finDescanso <= @horaFin) AND
+                (@inicioDescanso < @finDescanso OR
+                (@inicioDescanso > @finDescanso AND @inicioDescanso >= @horaInicio AND @finDescanso <= @horaFin)))
             BEGIN
                 SET @errorMessage = 'El período de descanso debe estar dentro del horario del turno.';
                 RAISERROR(@errorMessage, 16, 1);
@@ -247,10 +248,10 @@ BEGIN
     -- Verificar si ya existe un turno con el mismo horario
     IF EXISTS (
         SELECT 1
-        FROM [dbo].[Turnos]
-        WHERE horaInicio = @horaInicio
-            AND horaFin = @horaFin
-            AND activo = 1
+    FROM [dbo].[Turnos]
+    WHERE horaInicio = @horaInicio
+        AND horaFin = @horaFin
+        AND activo = 1
     )
     BEGIN
         SET @errorMessage = 'Error: Ya existe un turno activo con el mismo horario de ' + 
@@ -293,19 +294,19 @@ BEGIN
         
         -- Insertar el nuevo turno
         INSERT INTO [dbo].[Turnos]
-            (idTurno, descripcion, horaInicio, horaFin, duracionHoras, activo, idUsuarioCreador)
-        VALUES
-            (@idTurno, @descripcion, @horaInicio, @horaFin, @duracionHoras, @activo, @idUsuario);
+        (idTurno, descripcion, horaInicio, horaFin, duracionHoras, activo, idUsuarioCreador)
+    VALUES
+        (@idTurno, @descripcion, @horaInicio, @horaFin, @duracionHoras, @activo, @idUsuario);
             
         -- Insertar el registro de descanso si aplica
         IF @tieneDescanso = 1
         BEGIN
-            INSERT INTO [dbo].[TurnosDescansos]
-                (idTurnoDescanso, idTurno, horaInicio, horaFin, duracionMinutos, descripcion, activo)
-            VALUES
-                (NEWID(), @idTurno, @inicioDescanso, @finDescanso, @duracionDescansoMinutos, 
-                 ISNULL(@descripcionDescanso, 'Período de descanso'), 1);
-        END
+        INSERT INTO [dbo].[TurnosDescansos]
+            (idTurnoDescanso, idTurno, horaInicio, horaFin, duracionMinutos, descripcion, activo)
+        VALUES
+            (NEWID(), @idTurno, @inicioDescanso, @finDescanso, @duracionDescansoMinutos,
+                ISNULL(@descripcionDescanso, 'Período de descanso'), 1);
+    END
         
         COMMIT TRANSACTION;
         
@@ -370,7 +371,8 @@ CREATE TABLE [dbo].[ProgramacionTurnosDetalle]
 (
     [idProgramacionDetalle] [UNIQUEIDENTIFIER] NOT NULL,
     [idProgramacion] [UNIQUEIDENTIFIER] NOT NULL,
-    [fecha] [DATE] NOT NULL,
+    [fechaInicio] [DATE] NOT NULL,
+    [fechaFin] [DATE] NOT NULL,
     [idTurno] [UNIQUEIDENTIFIER] NOT NULL,
 
     CONSTRAINT [PK_ProgramacionTurnosDetalle] PRIMARY KEY CLUSTERED ([idProgramacionDetalle] ASC),
@@ -742,13 +744,15 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @idProgramacion UNIQUEIDENTIFIER
+    DECLARE @idProgramacion UNIQUEIDENTIFIER = NEWID();
+    DECLARE @ErrorMessage NVARCHAR(255);
 
     -- Validaciones básicas
     IF @fechaInicio > @fechaFin
     BEGIN
-        RAISERROR('La fecha de inicio no puede ser posterior a la fecha de fin', 16, 1)
-        RETURN -1
+        SET @ErrorMessage = 'La fecha de inicio no puede ser posterior a la fecha de fin';
+        RAISERROR(@ErrorMessage, 16, 1);
+        RETURN -1;
     END
 
     -- Si no se proporciona al menos un turno por día o un turno default, error
@@ -756,13 +760,10 @@ BEGIN
         AND @idTurnoMiercoles IS NULL AND @idTurnoJueves IS NULL AND @idTurnoViernes IS NULL
         AND @idTurnoSabado IS NULL AND @idTurnoDomingo IS NULL
     BEGIN
-        RAISERROR('Debe especificar al menos un turno predeterminado o un turno para cada día', 16, 1)
-        RETURN -2
+        SET @ErrorMessage = 'Debe especificar al menos un turno predeterminado o un turno para cada día';
+        RAISERROR(@ErrorMessage, 16, 1);
+        RETURN -2;
     END
-
-    -- Generar ID para la programación si no se proporciona
-    IF @idProgramacion IS NULL
-        SET @idProgramacion = NEWID();
 
     -- Iniciar transacción para asegurar consistencia
     BEGIN TRANSACTION;
@@ -778,6 +779,8 @@ BEGIN
         DECLARE @fechaActual DATE = @fechaInicio;
         DECLARE @diaSemana INT;
         DECLARE @idTurnoDia UNIQUEIDENTIFIER;
+        DECLARE @cruzaDia BIT;
+        DECLARE @fechaFinTurno DATE;
         
         WHILE @fechaActual <= @fechaFin
         BEGIN
@@ -786,23 +789,32 @@ BEGIN
 
         -- Determinar qué turno usar para este día
         SET @idTurnoDia = CASE 
-                WHEN @diaSemana = 1 AND @idTurnoDomingo IS NOT NULL THEN @idTurnoDomingo
-                WHEN @diaSemana = 2 AND @idTurnoLunes IS NOT NULL THEN @idTurnoLunes
-                WHEN @diaSemana = 3 AND @idTurnoMartes IS NOT NULL THEN @idTurnoMartes
-                WHEN @diaSemana = 4 AND @idTurnoMiercoles IS NOT NULL THEN @idTurnoMiercoles
-                WHEN @diaSemana = 5 AND @idTurnoJueves IS NOT NULL THEN @idTurnoJueves
-                WHEN @diaSemana = 6 AND @idTurnoViernes IS NOT NULL THEN @idTurnoViernes
-                WHEN @diaSemana = 7 AND @idTurnoSabado IS NOT NULL THEN @idTurnoSabado
-                ELSE @idTurnoDefault
-            END;
+                    WHEN @diaSemana = 1 AND @idTurnoDomingo IS NOT NULL THEN @idTurnoDomingo
+                    WHEN @diaSemana = 2 AND @idTurnoLunes IS NOT NULL THEN @idTurnoLunes
+                    WHEN @diaSemana = 3 AND @idTurnoMartes IS NOT NULL THEN @idTurnoMartes
+                    WHEN @diaSemana = 4 AND @idTurnoMiercoles IS NOT NULL THEN @idTurnoMiercoles
+                    WHEN @diaSemana = 5 AND @idTurnoJueves IS NOT NULL THEN @idTurnoJueves
+                    WHEN @diaSemana = 6 AND @idTurnoViernes IS NOT NULL THEN @idTurnoViernes
+                    WHEN @diaSemana = 7 AND @idTurnoSabado IS NOT NULL THEN @idTurnoSabado
+                    ELSE @idTurnoDefault
+                END;
 
         -- Solo insertar si hay un turno válido para este día
         IF @idTurnoDia IS NOT NULL
             BEGIN
+            -- Verificar si el turno cruza días (horaFin < horaInicio indica que termina al día siguiente)
+            SELECT @cruzaDia = CASE WHEN horaFin < horaInicio THEN 1 ELSE 0 END
+            FROM [dbo].[Turnos]
+            WHERE idTurno = @idTurnoDia;
+
+            -- Calcular la fecha de fin del turno
+            SET @fechaFinTurno = CASE WHEN @cruzaDia = 1 THEN DATEADD(DAY, 1, @fechaActual) ELSE @fechaActual END;
+
+            -- Insertar el detalle de programación con la fecha de fin correcta
             INSERT INTO [dbo].[ProgramacionTurnosDetalle]
-                (idProgramacionDetalle, idProgramacion, fecha, idTurno)
+                (idProgramacionDetalle, idProgramacion, fechaInicio, fechaFin, idTurno)
             VALUES
-                (NEWID(), @idProgramacion, @fechaActual, @idTurnoDia);
+                (NEWID(), @idProgramacion, @fechaActual, @fechaFinTurno, @idTurnoDia);
         END
 
         -- Avanzar al siguiente día
@@ -813,19 +825,19 @@ BEGIN
         EXEC [dbo].[ActualizarMarcacionesConTurnoAsignado] @idUsuario, @fechaInicio, @fechaFin;
         
         COMMIT TRANSACTION;
+        
+        -- Retornar el ID de la programación creada
+        SELECT @idProgramacion AS idProgramacion;
+        RETURN 0; -- Éxito
     END TRY
     BEGIN CATCH
-        ROLLBACK TRANSACTION;
+        IF @@TRANCOUNT > 0
+            ROLLBACK TRANSACTION;
         
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
-        DECLARE @ErrorState INT = ERROR_STATE();
-        
-        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
-        RETURN -100;
+        SET @ErrorMessage = 'Error al guardar la programación de turnos: ' + ERROR_MESSAGE();
+        RAISERROR(@ErrorMessage, 16, 1);
+        RETURN -100; -- Error general de base de datos
     END CATCH
-
-    RETURN 0;
 END
 
 /* -------------------------------------------------- */

@@ -474,8 +474,15 @@ function toggleDescansoFields() {
 }
 
 /**
- * Valida que las horas de descanso estén dentro del rango del turno
- * y establece los límites adecuados en los inputs
+ * Determina si un turno cruza la medianoche
+ */
+function turnoNocturno(horaInicio, horaFin) {
+    return horaFin < horaInicio;
+}
+
+/**
+ * Valida que las horas de descanso estén dentro del rango del turno,
+ * teniendo en cuenta si el turno cruza la medianoche
  */
 function validarRangoDescanso() {
     const horaInicio = document.getElementById('FechaInicial_turno').value;
@@ -488,30 +495,76 @@ function validarRangoDescanso() {
         return false;
     }
 
-    // Establecer límites en los inputs de descanso
-    inicioDescanso.min = horaInicio;
-    inicioDescanso.max = horaFin;
-    finDescanso.min = horaInicio;
-    finDescanso.max = horaFin;
+    const esNocturno = turnoNocturno(horaInicio, horaFin);
 
-    // Validar y ajustar valores actuales si están fuera de rango
-    if (inicioDescanso.value) {
-        if (inicioDescanso.value < horaInicio) {
-            inicioDescanso.value = horaInicio;
-            alertify.warning('La hora de inicio del descanso se ha ajustado al inicio del turno');
-        } else if (inicioDescanso.value > horaFin) {
-            inicioDescanso.value = horaInicio;
-            alertify.warning('La hora de inicio del descanso se ha ajustado al inicio del turno');
+    // En caso de turnos normales (diurnos), establecer límites normales
+    if (!esNocturno) {
+        inicioDescanso.min = horaInicio;
+        inicioDescanso.max = horaFin;
+        finDescanso.min = horaInicio;
+        finDescanso.max = horaFin;
+
+        // Validar valores actuales para turnos diurnos
+        if (inicioDescanso.value) {
+            if (inicioDescanso.value < horaInicio) {
+                inicioDescanso.value = horaInicio;
+                alertify.warning('La hora de inicio del descanso se ha ajustado al inicio del turno');
+            } else if (inicioDescanso.value > horaFin) {
+                inicioDescanso.value = horaInicio;
+                alertify.warning('La hora de inicio del descanso se ha ajustado al inicio del turno');
+            }
         }
-    }
 
-    if (finDescanso.value) {
-        if (finDescanso.value < horaInicio) {
-            finDescanso.value = horaFin;
-            alertify.warning('La hora de fin del descanso se ha ajustado al fin del turno');
-        } else if (finDescanso.value > horaFin) {
-            finDescanso.value = horaFin;
-            alertify.warning('La hora de fin del descanso se ha ajustado al fin del turno');
+        if (finDescanso.value) {
+            if (finDescanso.value < horaInicio) {
+                finDescanso.value = horaFin;
+                alertify.warning('La hora de fin del descanso se ha ajustado al fin del turno');
+            } else if (finDescanso.value > horaFin) {
+                finDescanso.value = horaFin;
+                alertify.warning('La hora de fin del descanso se ha ajustado al fin del turno');
+            }
+        }
+    } else {
+        // Para turnos nocturnos, no establecemos restricciones via min/max
+        // porque HTML no maneja bien los rangos que cruzan medianoche
+        inicioDescanso.removeAttribute('min');
+        inicioDescanso.removeAttribute('max');
+        finDescanso.removeAttribute('min');
+        finDescanso.removeAttribute('max');
+
+        // En su lugar, validamos manualmente después de cada cambio
+        if (inicioDescanso.value) {
+            // Verificar si el inicio del descanso está dentro del turno nocturno
+            const inicioEnRango = tiempoEnRango(inicioDescanso.value, horaInicio, horaFin);
+
+            if (!inicioEnRango) {
+                inicioDescanso.value = horaInicio;
+                alertify.warning('La hora de inicio del descanso debe estar dentro del horario del turno ' +
+                    `(${horaInicio} a ${horaFin})`);
+            }
+        }
+
+        if (finDescanso.value) {
+            // Verificar si el fin del descanso está dentro del turno nocturno
+            const finEnRango = tiempoEnRango(finDescanso.value, horaInicio, horaFin);
+
+            if (!finEnRango) {
+                finDescanso.value = horaFin;
+                alertify.warning('La hora de fin del descanso debe estar dentro del horario del turno ' +
+                    `(${horaInicio} a ${horaFin})`);
+            }
+        }
+
+        // Verificar que el fin del descanso sea posterior al inicio (considerando medianoche)
+        if (inicioDescanso.value && finDescanso.value) {
+            const inicio = new Date(`2000-01-01T${inicioDescanso.value}`);
+            const fin = new Date(`2000-01-01T${finDescanso.value}`);
+
+            // Si el fin es antes del inicio y no cruzan la medianoche, ajustar
+            if (fin < inicio && !turnoNocturno(inicioDescanso.value, finDescanso.value)) {
+                finDescanso.value = inicioDescanso.value;
+                alertify.warning('La hora de fin del descanso debe ser posterior a la hora de inicio');
+            }
         }
     }
 
@@ -519,28 +572,54 @@ function validarRangoDescanso() {
 }
 
 /**
+ * Verifica si un tiempo está dentro de un rango que puede cruzar medianoche
+ */
+function tiempoEnRango(tiempo, inicio, fin) {
+    if (inicio <= fin) {
+        // Rango normal (ejemplo: 8:00 a 16:00)
+        return tiempo >= inicio && tiempo <= fin;
+    } else {
+        // Rango que cruza medianoche (ejemplo: 22:00 a 6:00)
+        return tiempo >= inicio || tiempo <= fin;
+    }
+}
+
+/**
  * Calcula la duración del periodo de descanso
  * y actualiza la duración efectiva del turno
  */
 function calcularDuracionDescanso() {
-    const inicioDescanso = document.getElementById('inicio_descanso').value;
-    const finDescanso = document.getElementById('fin_descanso').value;
+    const inicioDescansoValue = document.getElementById('inicio_descanso').value;
+    const finDescansoValue = document.getElementById('fin_descanso').value;
+    const horaInicio = document.getElementById('FechaInicial_turno').value;
+    const horaFin = document.getElementById('FechaFinal_turno').value;
 
-    if (!inicioDescanso || !finDescanso) {
+    if (!inicioDescansoValue || !finDescansoValue) {
         document.getElementById('duracion_descanso').value = '00:00';
         return;
     }
 
-    // Validar que las horas de descanso estén dentro del rango del turno
-    if (!validarRangoDescanso()) return;
+    // Validar que el descanso está dentro del turno
+    const esNocturno = turnoNocturno(horaInicio, horaFin);
 
-    // Calcular duración del descanso
-    const inicio = new Date(`2000-01-01T${inicioDescanso}`);
-    const fin = new Date(`2000-01-01T${finDescanso}`);
+    if (esNocturno) {
+        // Para turnos nocturnos, verificar que el inicio y fin del descanso están en el rango correcto
+        const inicioEnRango = tiempoEnRango(inicioDescansoValue, horaInicio, horaFin);
+        const finEnRango = tiempoEnRango(finDescansoValue, horaInicio, horaFin);
 
+        if (!inicioEnRango || !finEnRango) {
+            alertify.error('El período de descanso debe estar completamente dentro del horario del turno');
+            document.getElementById('duracion_descanso').value = '00:00';
+            return;
+        }
+    }
+
+    // Calcular duración del descanso teniendo en cuenta posible cruce de medianoche
+    const inicio = new Date(`2000-01-01T${inicioDescansoValue}`);
+    const fin = new Date(`2000-01-01T${finDescansoValue}`);
+
+    // Si fin es menor que inicio, significa que el descanso cruza la medianoche
     let diferencia = fin - inicio;
-
-    // Ajustar si cruza medianoche (aunque normalmente no debería pasar con las validaciones)
     if (diferencia < 0) {
         diferencia += 24 * 60 * 60 * 1000;
     }
@@ -553,6 +632,7 @@ function calcularDuracionDescanso() {
     document.getElementById('duracion_descanso').value =
         `${horas.toString().padStart(2, '0')}:${minutos.toString().padStart(2, '0')}`;
 
+    // Recalcular duración efectiva del turno
     recalcularDuracionEfectiva();
 }
 
