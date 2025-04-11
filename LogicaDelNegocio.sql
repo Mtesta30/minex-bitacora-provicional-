@@ -958,7 +958,10 @@ BEGIN
         idProgramacionDetalle UNIQUEIDENTIFIER,
         idTurno UNIQUEIDENTIFIER,
         horaInicioTurno TIME,
-        horaFinTurno TIME
+        horaFinTurno TIME,
+        cruzaDia BIT,
+        fechaTurno DATE,
+        fechaFinTurno DATE
     );
 
     -- Identificar las marcaciones que tienen turnos asignados y necesitan actualización
@@ -971,7 +974,10 @@ BEGIN
         PD.idProgramacionDetalle,
         PD.idTurno,
         T.horaInicio,
-        T.horaFin
+        T.horaFin,
+        CASE WHEN T.horaFin < T.horaInicio THEN 1 ELSE 0 END AS cruzaDia,
+        PD.fechaInicio AS fechaTurno,
+        PD.fechaFin AS fechaFinTurno
     FROM [dbo].[Bitacora] B
         INNER JOIN [dbo].[vUsuariosAppBiometrico] U ON B.Identificacion = U.Identificacion
         INNER JOIN [dbo].[ProgramacionTurnos] PT ON U.idUsuario = PT.idUsuario
@@ -980,8 +986,14 @@ BEGIN
     WHERE 
         (U.idUsuario = @idUsuario OR @idUsuario IS NULL)
         AND CAST(B.FechaHora AS DATE) BETWEEN @fechaInicio AND @fechaFin
-        AND CAST(B.FechaHora AS DATE) = PD.fecha
         AND PT.activo = 1
+        AND (
+            -- La fecha de la marcación es igual a la fecha de inicio del turno
+            (CAST(B.FechaHora AS DATE) = PD.fechaInicio)
+        OR
+        -- La fecha de la marcación es igual a la fecha de fin del turno (para turnos que cruzan días)
+        (CAST(B.FechaHora AS DATE) = PD.fechaFin AND PD.fechaInicio < PD.fechaFin)
+        )
         AND (
             -- Marcaciones que fueron actualizadas recientemente con un idProgramacionDetalle
             (B.idProgramacionDetalle IS NOT NULL
@@ -1002,6 +1014,9 @@ BEGIN
     DECLARE @horaActual TIME;
     DECLARE @horaInicioTurno TIME;
     DECLARE @horaFinTurno TIME;
+    DECLARE @cruzaDia BIT;
+    DECLARE @fechaTurno DATE;
+    DECLARE @fechaFinTurno DATE;
     DECLARE @toleranciaMinutos INT = 30;
     -- Configurable
     DECLARE @tipoMarcacion VARCHAR(20);
@@ -1016,12 +1031,17 @@ BEGIN
         FechaHora,
         idBiometrico,
         horaInicioTurno,
-        horaFinTurno
+        horaFinTurno,
+        cruzaDia,
+        fechaTurno,
+        fechaFinTurno
     FROM #MarcacionesParaActualizar
     ORDER BY Identificacion, FechaHora;
 
     OPEN curMarcaciones;
-    FETCH NEXT FROM curMarcaciones INTO @idBitacora, @Identificacion, @FechaHora, @idBiometrico, @horaInicioTurno, @horaFinTurno;
+    FETCH NEXT FROM curMarcaciones INTO 
+        @idBitacora, @Identificacion, @FechaHora, @idBiometrico, 
+        @horaInicioTurno, @horaFinTurno, @cruzaDia, @fechaTurno, @fechaFinTurno;
 
     WHILE @@FETCH_STATUS = 0
     BEGIN
@@ -1058,86 +1078,140 @@ BEGIN
             AND FechaHora < @FechaHora
         ORDER BY FechaHora DESC;
 
-        -- Lógica para determinar si es entrada o salida basado en el horario del turno
-        -- Primera marcación del día
-        IF @posicionMarcacion = 1
+        -- Lógica para determinar si es entrada o salida basado en varios factores
+        -- 1. Verificar si estamos en el inicio o fin de un turno que cruza días
+        IF @cruzaDia = 1 
         BEGIN
-            -- Si está cerca del inicio del turno, es entrada
-            IF DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) BETWEEN -@toleranciaMinutos AND 120
+            -- Si estamos en la fecha de fin del turno (segundo día)
+            IF @fechaActual = @fechaFinTurno AND @fechaActual > @fechaTurno
             BEGIN
-                SET @tipoMarcacion = 'Entrada';
-
-                -- Registrar si llegó tarde
-                IF @horaActual > @horaInicioTurno
-                    SET @observacion = 'Llegada tardía: ' + CAST(DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) AS VARCHAR) + ' minutos';
+                -- Si es antes de la hora de fin, probablemente es una salida
+                IF @horaActual <= @horaFinTurno
+                BEGIN
+                    SET @tipoMarcacion = 'Salida';
+                    SET @observacion = 'Salida de turno nocturno';
+                END
+                -- Si es después de la hora de fin, podría ser una entrada para el siguiente turno
                 ELSE
-                    SET @observacion = 'Entrada a turno programado';
-            END
-            -- Si está cerca del fin del turno pero es la primera marcación, algo raro pasa
-            ELSE IF DATEDIFF(MINUTE, @horaFinTurno, @horaActual) BETWEEN -120 AND @toleranciaMinutos
-            BEGIN
-                SET @tipoMarcacion = 'Salida';
-                SET @observacion = 'Marcación única cerca del fin de turno';
-            END
-            ELSE
-            BEGIN
-                SET @tipoMarcacion = 'Entrada';
-                SET @observacion = 'Entrada fuera de rango esperado';
-            END
-        END
-        -- Segunda o posterior marcación del día
-        ELSE
-        BEGIN
-            -- Si es la última marcación del día y está cerca del fin de turno
-            IF @posicionMarcacion = @totalMarcacionesDia AND
-                DATEDIFF(MINUTE, @horaActual, @horaFinTurno) BETWEEN -120 AND @toleranciaMinutos
-            BEGIN
-                SET @tipoMarcacion = 'Salida';
-
-                -- Registrar si salió antes
-                IF @horaActual < @horaFinTurno
-                    SET @observacion = 'Salida anticipada: ' + CAST(DATEDIFF(MINUTE, @horaActual, @horaFinTurno) AS VARCHAR) + ' minutos';
-                ELSE
-                    SET @observacion = 'Salida de turno programado';
-            END
-            -- Si no es la última pero el tipo anterior fue entrada, esta debe ser salida
-            ELSE IF @tipoMarcacionAnterior = 'Entrada'
-            BEGIN
-                SET @tipoMarcacion = 'Salida';
-                SET @observacion = 'Salida intermedia durante turno';
-            END
-            -- Si el tipo anterior fue salida, esta debe ser entrada
-            ELSE IF @tipoMarcacionAnterior = 'Salida'
-            BEGIN
-                SET @tipoMarcacion = 'Entrada';
-                SET @observacion = 'Reingreso durante turno';
-            END
-            -- Si no hay tipo anterior claro o es el caso de una duplicada
-            ELSE
-            BEGIN
-                -- Verificar si está más cerca del inicio o del fin del turno
-                IF ABS(DATEDIFF(MINUTE, @horaActual, @horaInicioTurno)) < ABS(DATEDIFF(MINUTE, @horaActual, @horaFinTurno))
                 BEGIN
                     SET @tipoMarcacion = 'Entrada';
-                    SET @observacion = 'Entrada determinada por cercanía a inicio de turno';
+                    SET @observacion = 'Posible entrada para turno posterior';
                 END
+            END
+            -- Si estamos en la fecha de inicio del turno (primer día)
+            ELSE IF @fechaActual = @fechaTurno
+            BEGIN
+                -- Si es cercano a la hora de inicio, es una entrada
+                IF DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) BETWEEN -@toleranciaMinutos AND 120
+                BEGIN
+                    SET @tipoMarcacion = 'Entrada';
+
+                    -- Registrar si llegó tarde
+                    IF @horaActual > @horaInicioTurno
+                        SET @observacion = 'Llegada tardía: ' + CAST(DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) AS VARCHAR) + ' minutos';
+                    ELSE
+                        SET @observacion = 'Entrada a turno programado';
+                END
+                -- Si es muy tarde en el primer día, podría ser salida anticipada
                 ELSE
                 BEGIN
                     SET @tipoMarcacion = 'Salida';
-                    SET @observacion = 'Salida determinada por cercanía a fin de turno';
+                    SET @observacion = 'Posible salida anticipada de turno nocturno';
+                END
+            END
+        END
+        -- 2. Para turnos que no cruzan días o casos no cubiertos arriba
+        ELSE
+        BEGIN
+            -- Primera marcación del día
+            IF @posicionMarcacion = 1
+            BEGIN
+                -- Si está cerca del inicio del turno, es entrada
+                IF DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) BETWEEN -@toleranciaMinutos AND 120
+                BEGIN
+                    SET @tipoMarcacion = 'Entrada';
+
+                    -- Registrar si llegó tarde
+                    IF @horaActual > @horaInicioTurno
+                        SET @observacion = 'Llegada tardía: ' + CAST(DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) AS VARCHAR) + ' minutos';
+                    ELSE
+                        SET @observacion = 'Entrada a turno programado';
+                END
+                -- Si está cerca del fin del turno pero es la primera marcación, algo raro pasa
+                ELSE IF DATEDIFF(MINUTE, @horaFinTurno, @horaActual) BETWEEN -120 AND @toleranciaMinutos
+                BEGIN
+                    SET @tipoMarcacion = 'Salida';
+                    SET @observacion = 'Marcación única cerca del fin de turno';
+                END
+                ELSE
+                BEGIN
+                    SET @tipoMarcacion = 'Entrada';
+                    SET @observacion = 'Entrada fuera de rango esperado';
+                END
+            END
+            -- Segunda o posterior marcación del día
+            ELSE
+            BEGIN
+                -- Si es la última marcación del día y está cerca del fin de turno
+                IF @posicionMarcacion = @totalMarcacionesDia AND
+                    DATEDIFF(MINUTE, @horaActual, @horaFinTurno) BETWEEN -120 AND @toleranciaMinutos
+                BEGIN
+                    SET @tipoMarcacion = 'Salida';
+
+                    -- Registrar si salió antes
+                    IF @horaActual < @horaFinTurno
+                        SET @observacion = 'Salida anticipada: ' + CAST(DATEDIFF(MINUTE, @horaActual, @horaFinTurno) AS VARCHAR) + ' minutos';
+                    ELSE
+                        SET @observacion = 'Salida de turno programado';
+                END
+                -- Si no es la última pero el tipo anterior fue entrada, esta debe ser salida
+                ELSE IF @tipoMarcacionAnterior = 'Entrada'
+                BEGIN
+                    SET @tipoMarcacion = 'Salida';
+                    SET @observacion = 'Salida intermedia durante turno';
+                END
+                -- Si el tipo anterior fue salida, esta debe ser entrada
+                ELSE IF @tipoMarcacionAnterior = 'Salida'
+                BEGIN
+                    SET @tipoMarcacion = 'Entrada';
+                    SET @observacion = 'Reingreso durante turno';
+                END
+                -- Si no hay tipo anterior claro o es el caso de una duplicada
+                ELSE
+                BEGIN
+                    -- Verificar si está más cerca del inicio o del fin del turno
+                    IF ABS(DATEDIFF(MINUTE, @horaActual, @horaInicioTurno)) < ABS(DATEDIFF(MINUTE, @horaActual, @horaFinTurno))
+                    BEGIN
+                        SET @tipoMarcacion = 'Entrada';
+                        SET @observacion = 'Entrada determinada por cercanía a inicio de turno';
+                    END
+                    ELSE
+                    BEGIN
+                        SET @tipoMarcacion = 'Salida';
+                        SET @observacion = 'Salida determinada por cercanía a fin de turno';
+                    END
                 END
             END
         END
 
-        -- Actualizar la marcación
+        -- Actualizar la marcación con el tipo y la observación determinados
         UPDATE [dbo].[Bitacora]
         SET 
             tipoMarcacion = @tipoMarcacion,
-            observacion = @observacion
+            observacion = @observacion,
+            -- Actualizar también la referencia al turno
+            idProgramacionDetalle = (SELECT idProgramacionDetalle
+        FROM #MarcacionesParaActualizar
+        WHERE idBitacora = @idBitacora),
+            idTurno = (SELECT idTurno
+        FROM #MarcacionesParaActualizar
+        WHERE idBitacora = @idBitacora)
         WHERE 
             idBitacora = @idBitacora;
 
-        FETCH NEXT FROM curMarcaciones INTO @idBitacora, @Identificacion, @FechaHora, @idBiometrico, @horaInicioTurno, @horaFinTurno;
+        FETCH NEXT FROM curMarcaciones INTO 
+            @idBitacora, @Identificacion, @FechaHora, @idBiometrico, 
+            @horaInicioTurno, @horaFinTurno, @cruzaDia, @fechaTurno, @fechaFinTurno;
     END
 
     CLOSE curMarcaciones;
@@ -1153,7 +1227,7 @@ BEGIN
             ELSE B.tipoMarcacion
         END,
         observacion = CASE
-            WHEN PrevMarcacion.tipoMarcacion = B.tipoMarcacion THEN 'Corregido por secuencia inconsistente: ' + B.observacion
+            WHEN PrevMarcacion.tipoMarcacion = B.tipoMarcacion THEN 'Corregido por secuencia inconsistente: ' + ISNULL(B.observacion, '')
             ELSE B.observacion
         END
     FROM [dbo].[Bitacora] B
@@ -1184,10 +1258,12 @@ BEGIN
     WHERE 
         (U.idUsuario = @idUsuario OR @idUsuario IS NULL)
         AND CAST(B.FechaHora AS DATE) BETWEEN @fechaInicio AND @fechaFin
-        AND CAST(B.FechaHora AS DATE) = PD.fecha
+        AND (
+            CAST(B.FechaHora AS DATE) = PD.fechaInicio OR
+        (CAST(B.FechaHora AS DATE) = PD.fechaFin AND PD.fechaInicio < PD.fechaFin)
+        )
         AND PT.activo = 1;
-END
-GO
+END;
 
 /* -------------------------------------------------- */
 /* -------------------------------------------------- */

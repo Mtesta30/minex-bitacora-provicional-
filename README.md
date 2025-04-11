@@ -288,3 +288,23 @@ El procedimiento `asig_consecutivo` se encarga de asignar un número consecutivo
 
 - **Procedimiento `asig_consecutivo`:** Asigna un número consecutivo a los registros de acceso.
 - **Trigger `Consecutivos`:** Se activa después de una inserción en la tabla `bitacora` para ejecutar el procedimiento `asig_consecutivo`.
+
+  ## Tareas a Realizar
+
+  ### Primera Tarea: Gestión de Turnos
+
+  - **Eliminar turno:**
+    - El turno solo se podrá eliminar cuando no esté asignado a ningún empleado
+  - **Actualizar turno:**
+    - Solo se permitirá actualizar cuando el turno no esté asignado a ningún empleado
+
+  ### Segunda Tarea: Gestión de Asignaciones
+
+  - **Eliminar asignación de turnos:**
+    - Solo se podrá eliminar cuando:
+      - El empleado no cuente con un registro en la tabla bitácora que se encuentre dentro del rango de fechas con el que se programó la asignación de turnos
+      - La fecha de inicio del rango de fechas con las que se programó la asignación de turnos sea mayor o igual a la fecha actual
+  - **Modificar asignación de turnos:**
+    - Solo se podrá modificar cuando:
+      - La fecha de cierre de corte de novedades sea mayor o diferente a la fecha actual
+      - El rango de fechas del turno a modificar este entre el inicio y cierre de novedades del mes actual
