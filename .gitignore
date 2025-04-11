@@ -1,6 +1,16 @@
-/logs
+# Archivos de log
+logs/
+*.log
+
+# Archivos de configuración JSON
 *.json
+
+# Archivos SQL específicos que no deben ser versionados
 Consultas.sql
-/SQL
+
+# Directorios SQL con scripts internos
+SQL/
+
+# Documentación técnica temporal
 NEWSQL.md
 
