@@ -302,7 +302,9 @@ El procedimiento `asig_consecutivo` se encarga de asignar un número consecutivo
 
   - **Eliminar asignación de turnos:**
     - Solo se podrá eliminar cuando:
-      - El empleado no cuente con un registro en la tabla bitácora que se encuentre dentro del rango de fechas con el que se programó la asignación de turnos
+      - La fecha de cierre de corte de novedades sea mayor o diferente a la fecha actual
+      - El rango de fechas del turno a modificar este entre el inicio y cierre de novedades del mes actual
+      - El empleado no cuente con un registro en la tabla bitácora que se encuentre dentro del rango de fechas con la que se programó la asignación de turnos
       - La fecha de inicio del rango de fechas con las que se programó la asignación de turnos sea mayor o igual a la fecha actual
   - **Modificar asignación de turnos:**
     - Solo se podrá modificar cuando:
