@@ -4,11 +4,13 @@ require_once '../../conectartraz.php';
 // require_once '../../conectar.php';
 
 // Usuario admin
-$_SESSION['idUsuario'] = 'c9fa5447-4a96-4309-b6c3-4ffbbdee22fe'; // YUBER LOBO
+// $_SESSION['idUsuario'] = 'c9fa5447-4a96-4309-b6c3-4ffbbdee22fe'; // YUBER LOBO
 
 // Usuario de prueba
+// $_SESSION['idUsuario'] = '84db9cee-72aa-476a-a61b-fab16c5983af'; // INGRID VERONICA ACEVEDO CACERES
+
 //$_SESSION['idUsuario'] = 'E67D0C54-938B-421C-9D95-826E9AC4AD2C'; // JONATHAN BALAGUERA CARVAJALINO
-// $_SESSION['idUsuario'] = 'd8c916d4-7b13-40a7-ad8c-38bae6f76429'; // EMERSON JIMENEZ
+$_SESSION['idUsuario'] = 'd8c916d4-7b13-40a7-ad8c-38bae6f76429'; // EMERSON JIMENEZ
 
 // Permisos del sistema
 $_SESSION['permisos_todos'] = array(
@@ -141,7 +143,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                 if (isset($_SESSION['permisos_todos']['CONSULTAS_DE_TAREAS'])) {
                     echo '<li><a href="#" class="opciones" data-toggle="collapse" data-target="#idConsultar"><span class="glyphicon glyphicon-search" style="color: #5c80c0;"></span>Consulta</a>
                         <ul id="idConsultar" class="collapse">
-                         <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorMina"><span class="glyphicon glyphicon-tower" ></span>Por Mina</a><br>';
+                         <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorCentroTrabajo"><span class="glyphicon glyphicon-tower" ></span>Por Centro de Trabajo</a><br>';
                     if (isset($_SESSION['permisos_todos']['CONSULTAR TODOS'])) {
                         echo '
                         <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorEmpresa"><span class="glyphicon glyphicon-folder-open"></span>Por Empresa</a><br>
@@ -378,17 +380,15 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
             </div>
         </div>
 
-        <div class="collapse fade" id="idPorMina" tabindex="-1" role="dialog" aria-labelledby="collapse" aria-hidden="true">
+        <div class="collapse fade" id="idPorCentroTrabajo" tabindex="-1" role="dialog" aria-labelledby="collapse" aria-hidden="true">
             <div class="container-fluid">
                 <div class="row">
-                    <h2 class="">CONSULTA BITACORA POR MINA</h2>
+                    <h2 class="">CONSULTA BITACORA POR CENTRO DE TRABAJO</h2>
                     <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
                         <label for="CentroTrabajoMina">Centro de Trabajo:</label>
-                        <input type="text" id="CentroTrabajoMina" list="list_Centrotrabajo"
-                            onkeyup="list_Centrotrabajo(this)" class="form-control" />
-                        <datalist id="list_Centrotrabajo">
-                            <!-- <option value="Dinastia" data-id="UHJiK3dHN25oWWZuU3AyVlVQS1B6SC9KelVLUmY4M2IvWU5zbXVkRGlqMVo2aWpZa2Jic0hwSjdWdnArYW14TQ=="></option> -->
-                        </datalist>
+                        <input type="text" id="CentroTrabajo_consulta" list="list_Centrotrabajo_consulta" class="form-control"
+                            onkeyup="list_Centrotrabajo(this, 'consulta')" />
+                        <datalist id="list_Centrotrabajo_consulta"></datalist>
                     </div>
                     <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
                         <label for="FechaInicialMina">Fecha Inicio:</label>
@@ -411,11 +411,11 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     </div>
                     <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
                         <label>&nbsp;</label><br>
-                        <button type="button" id="button_mina" class="btn btn-primary" onclick="get_ConsultaMina()">Buscar</button>
+                        <button type="button" id="button_mina" class="btn btn-primary" onclick="get_ConsultaCentroTrabajo()">Buscar</button>
                     </div>
                 </div>
                 <div class="table-responsive">
-                    <div id="div_tabla_mina"></div>
+                    <div id="div_tabla_centrotrabajo"></div>
                 </div>
             </div>
         </div>
@@ -651,8 +651,9 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     <h2 class="">ASIGNAR TURNOS</h2>
                     <div class="col-xs-2 col-sm-3 col-md-3 col-lg-3">
                         <label>Centro Trabajo:</label><br>
-                        <input type="text" id="CentroTrabajo" list="list_Centrotrabajo" class="form-control" placeholder="Escriba un Centro de trabajo" onkeyup="list_Centrotrabajo(this)" />
-                        <datalist id="list_Centrotrabajo"></datalist>
+                        <input type="text" id="CentroTrabajo_asignar" list="list_Centrotrabajo_asignar" class="form-control"
+                            placeholder="Escriba un Centro de trabajo" onkeyup="list_Centrotrabajo(this, 'asignar')" />
+                        <datalist id="list_Centrotrabajo_asignar"></datalist>
                     </div>
                     <div class="col-xs-2 col-sm-2 col-md-2 col-lg-2">
                         <label>Turnos:</label><br>

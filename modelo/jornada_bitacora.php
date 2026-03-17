@@ -13,7 +13,7 @@ $json = '';
 // Añade esta función de log al principio del archivo, justo después de incluir las librerías
 function log_debug($mensaje, $datos = null)
 {
-    $archivo_log = __DIR__ . '/debug_turnos_asignados.log';
+    $archivo_log = __DIR__ . '/debug_reportes.log';
     $tiempo = date('Y-m-d H:i:s');
     $log_mensaje = "[$tiempo] $mensaje";
 
@@ -56,54 +56,126 @@ if (isset($_GET['band'])) {
 
     // $json = '';
 
-    if ($_GET['band'] == 'get_ConsultaMina') {
-        $CentroTrabajo = $list_record['CentroTrabajo'];
-        $FechaInicial = $list_record['FechaInicial'];
-        $FechaFinal = $list_record['FechaFinal'];
-        $Cargo = ENCR::descript($list_record['Cargo']);
-        $Usuario = isset($list_record['Usuario']) ? ENCR::descript($list_record['Usuario']) : null;
+    if ($_GET['band'] == 'get_ConsultaCentroTrabajo') {
+        try {
+            $centroTrabajo = isset($list_record['idCentroTrabajo']) ? ENCR::descript($list_record['idCentroTrabajo']) : null;
+            $fechaInicial = $list_record['fechaInicial'];
+            $fechaFinal = $list_record['fechaFinal'];
+            $cargo = $list_record['cargo'];
+            $usuario = isset($list_record['usuario']) ? ENCR::descript($list_record['usuario']) : null;
+            $idUsuario = isset($list_record['idUsuario']) ? $list_record['idUsuario'] : '';
 
-        $sql = "SELECT * FROM fnObtenerHorasTrabajadas(?, ?, 'BIOPRADERA', ?)
-                WHERE HorasTrabajadas != 'Sin Salida';";
-        $params = array($FechaInicial, $FechaFinal, $Usuario);
-        $res = sqlsrv_query($conn, $sql, $params);
+            // 2. Obtener centros de trabajo permitidos
+            $centrosTrabajo = FUNCIONES::BuscarpermisoDetalle($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
 
-        $data = '<table id="idTableMina" class="table table-hover table-condensed table-bordered table-striped">
-                 <thead>
-                    <tr>
-                        <th>Identificador</th>
-                        <th>Nombres</th>
-                        <th>Apellidos</th>
-                        <th>Fecha</th>
-                        <th>Hora Entrada</th>
-                        <th>Hora Salida</th>
-                        <th>Horas Trabajadas</th>
-                    </tr>
-                 </thead>
-                 <tbody>';
+            // 3. Validar si tiene centros asignados
+            if (empty($centrosTrabajo)) {
+                $json = respuestaError('Usuario no tiene centros de trabajo asignados');
+                return;
+            }
 
-        while ($aa = sqlsrv_fetch_array($res)) {
-            $id = ($aa['ID']);
-            $Nombres = utf8_encode($aa['Nombre']);
-            $Apellidos = utf8_encode($aa['Apellido']);
-            $Fecha = $aa['Fecha']->format('Y-m-d');
-            $HoraEntrada = $aa['HoraEntrada']->format('H:i:s');
-            $HoraSalida = $aa['HoraSalida'] ? $aa['HoraSalida']->format('H:i:s') : 'Sin Salida';
-            $HorasTrabajadas = $aa['HorasTrabajadas'];
+            // 4. Validar si el centro de trabajo seleccionado está entre los permitidos
+            if (!is_null($centroTrabajo) && !empty($centroTrabajo)) {
+                if (!in_array($centroTrabajo, $centrosTrabajo)) {
+                    $json = respuestaError('No tiene permisos para consultar este centro de trabajo');
+                    return;
+                }
+            }
 
-            $data .= "<tr>
-                        <td>$id</td>
-                        <td>$Nombres</td>
-                        <td>$Apellidos</td>
-                        <td>$Fecha</td>
-                        <td>$HoraEntrada</td>
-                        <td>$HoraSalida</td>
-                        <td>$HorasTrabajadas</td>
-                      </tr>";
+            // si el centro de trabajo es dinastia ejecuto la siguiente estructura
+            if ($centroTrabajo == 'BF23C474-C49A-498C-8BCE-9DB32D3562F0') {
+
+
+                $sql = "SELECT * FROM biometrico.dbo.fnObtenerHorasTrabajadas(?, ?, 'bio_calle 13', ?)";
+                $params = array($fechaInicial, $fechaFinal, $usuario);
+                $res = sqlsrv_query($conn, $sql, $params);
+
+                if ($res === false) {
+                    $errors = sqlsrv_errors();
+                    $json = respuestaError('Error al ejecutar la consulta: ' . $errors[0]['message']);
+                    return;
+                }
+
+                // Procesar los resultados en formato simple
+                $registros = array();
+                while ($row = sqlsrv_fetch_array($res, SQLSRV_FETCH_ASSOC)) {
+                    // Adaptamos los campos según la estructura simple
+                    $registro = array(
+                        'id' => $row['ID'],
+                        'nombre' => utf8_encode($row['Nombre']),
+                        'apellido' => utf8_encode($row['Apellido']),
+                        'fecha' => $row['Fecha']->format('Y-m-d'),
+                        'horaEntrada' => $row['HoraEntrada']->format('H:i:s'),
+                        'horaSalida' => $row['HoraSalida'] ? $row['HoraSalida']->format('H:i:s') : 'Sin Salida',
+                        'horasTrabajadas' => $row['HorasTrabajadas']
+                    );
+
+                    $registros[] = $registro;
+                }
+
+                // Indicar que los datos están en formato simple
+                $json = respuestaExito(
+                    array(
+                        'totalRegistros' => count($registros),
+                        'registros' => $registros,
+                        'formatoSimple' => true
+                    ),
+                    'Reporte de horas trabajadas obtenido correctamente'
+                );
+            } else {
+
+                $sql = "EXEC [dbo].[GET_ReporteJornadasLaborales] 
+                @FechaInicio = ?,
+                @FechaFin = ?,
+                @IdCentroTrabajo = ?,
+                @IdUsuario = ?,
+                @Cargo = ?";
+                $params = array($fechaInicial, $fechaFinal, $centroTrabajo, $usuario, $cargo);
+                $res = sqlsrv_query($conn, $sql, $params);
+
+                if ($res === false) {
+                    $errors = sqlsrv_errors();
+                    $json = respuestaError('Error al ejecutar la consulta: ' . $errors[0]['message']);
+                    return;
+                }
+
+                // Procesar los resultados en formato JSON
+                $registros = array();
+                while ($row = sqlsrv_fetch_array($res, SQLSRV_FETCH_ASSOC)) {
+                    // Adaptamos los campos según la estructura esperada
+                    $registro = array(
+                        'fecha' => $row['Fecha']->format('Y-m-d'),
+                        'diaSemana' => $row['DiaSemana'],
+                        'cargo' => utf8_encode($row['Cargo']),
+                        'nombreTrabajador' => utf8_encode($row['NombreTrabajador']),
+                        'cedula' => $row['Cedula'],
+                        'jornada' => $row['Jornada'],
+                        'inicioJornada' => $row['1eraJornada.inicio']->format('H:i:s'),
+                        'inicioReceso' => $row['1eraJornada.inicioreceso'] ? $row['1eraJornada.inicioreceso']->format('H:i:s') : null,
+                        'totalPrimeraJornada' => $row['1eraJornada.total'],
+                        'finReceso' => $row['2daJornada.finreceso'] ? $row['2daJornada.finreceso']->format('H:i:s') : null,
+                        'finJornada' => $row['2daJornada.final']->format('H:i:s'),
+                        'totalSegundaJornada' => $row['2daJornada.total'],
+                        'tiempoTotalTrabajado' => $row['horas.TiempoTotalTrabajado'],
+                        'sobretiempo' => $row['horas.Sobretiempo']
+                    );
+
+                    $registros[] = $registro;
+                }
+
+                // Usar la función de respuesta exitosa
+                $json = respuestaExito(
+                    array(
+                        'totalRegistros' => count($registros),
+                        'registros' => $registros,
+                        'formatoSimple' => false
+                    ),
+                    'Reporte de jornadas laborales obtenido correctamente'
+                );
+            }
+        } catch (Exception $e) {
+            $json = respuestaError('Error al procesar la consulta: ' . $e->getMessage());
         }
-
-        $data .= '</tbody></table>';
-        $json = $data;
     }
 
     if ($_GET['band'] == 'get_Cargos') {

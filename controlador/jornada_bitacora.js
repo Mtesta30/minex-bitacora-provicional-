@@ -920,7 +920,7 @@ function asignarTurnoMultiple() {
     let idTurno = document.getElementById('lista_turnos_a').value;
     let fechaInicio = document.getElementById('fecha_ini').value;
     let fechaFin = document.getElementById('fecha_fin').value;
-    let idCentroTrabajo = consulta('CentroTrabajo', 'list_Centrotrabajo');;
+    let idCentroTrabajo = consulta('CentroTrabajo_asignar', 'list_Centrotrabajo_asignar');
 
     if (!idTurno || !fechaInicio || !fechaFin) {
         alertify.error('Debe seleccionar un turno y fechas de inicio y fin');
@@ -1525,57 +1525,224 @@ async function list_UsuarioMina(object) {
     }
 }
 
-async function get_ConsultaMina() {
-    let FechaInicial = document.getElementById("FechaInicialMina").value;
-    let FechaFinal = document.getElementById("FechaFinalMina").value;
-    let Cargo = get_data_id("CargoMina", "list_CargoMina");
-    let Usuario = get_data_id("UsuarioMina", "list_UsuarioMina");
-    let CentroTrabajo = get_data_id("CentroTrabajoMina", "list_CentrotrabajoMina");
-
-    let param = { FechaInicial: FechaInicial, FechaFinal: FechaFinal, Cargo: Cargo, Usuario: Usuario, CentroTrabajo: CentroTrabajo };
-    let data = JSON.stringify(param);
-    let url = "../modelo/jornada_bitacora.php?band=get_ConsultaMina";
-
+async function get_ConsultaCentroTrabajo() {
     try {
-        let response = await sendRequest(url, data);
-        document.getElementById("div_tabla_mina").innerHTML = response;
-        $('#idTableMina').DataTable({
-            "language": {
-                "url": "//cdn.datatables.net/plug-ins/9dcbecd42ad/i18n/Spanish.json"
+        // Mostrar indicador de carga
+        document.getElementById('div_tabla_centrotrabajo').innerHTML =
+            '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><p>Cargando información...</p></div>';
+
+        // Obtener valores para la consulta
+        const fechaInicial = document.getElementById("FechaInicialMina").value;
+        const fechaFinal = document.getElementById("FechaFinalMina").value;
+        const cargo = get_data_id("CargoMina", "list_CargoMina");
+        const usuario = get_data_id("UsuarioMina", "list_UsuarioMina");
+        const centroTrabajo = get_data_id("CentroTrabajo_consulta", "list_Centrotrabajo_consulta");
+
+        // Validar fechas (opcional)
+        if (!fechaInicial || !fechaFinal) {
+            alertify.error('Debe seleccionar un rango de fechas válido');
+            return;
+        }
+
+        // Enviar petición al servidor
+        const response = await fetch('../modelo/jornada_bitacora.php?band=get_ConsultaCentroTrabajo', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
             },
-            "ordering": false,
-            "searching": true,
-            dom: 'Bfrtip',
-            buttons: [
-                'excel', 'print'
-            ]
+            body: JSON.stringify({
+                fechaInicial: fechaInicial,
+                fechaFinal: fechaFinal,
+                cargo: cargo,
+                usuario: usuario,
+                idCentroTrabajo: centroTrabajo,
+                idUsuario: id_usuario
+            })
         });
+
+        // Procesar respuesta
+        const data = await response.json();
+
+        // Detectar el formato de datos
+        const esFormatoSimple = data.data && data.data.formatoSimple === true;
+
+        // Construir la tabla con los datos recibidos según el formato
+        let html;
+
+        if (esFormatoSimple) {
+            // Formato simple para fnObtenerHorasTrabajadas
+            html = `
+                <table id="tabla_jornadas" class="table table-striped table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th class="text-center">ID</th>
+                            <th class="text-center">Nombre</th>
+                            <th class="text-center">Apellido</th>
+                            <th class="text-center">Fecha</th>
+                            <th class="text-center">Hora Entrada</th>
+                            <th class="text-center">Hora Salida</th>
+                            <th class="text-center">Horas Trabajadas</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+            if (data.success && data.data && data.data.registros && data.data.registros.length > 0) {
+                // Agregar filas con datos para formato simple
+                data.data.registros.forEach(item => {
+                    html += `<tr>
+                        <td>${item.id || ''}</td>
+                        <td>${item.nombre || ''}</td>
+                        <td>${item.apellido || ''}</td>
+                        <td>${item.fecha || ''}</td>
+                        <td>${item.horaEntrada || 'NO MARCADO'}</td>
+                        <td>${item.horaSalida || 'NO MARCADO'}</td>
+                        <td>${item.horasTrabajadas || ''}</td>
+                    </tr>`;
+                });
+            } else {
+                // Mensaje para tabla vacía
+                html += `<tr>
+                    <td class="text-center" colspan="7">No se encontraron registros para los criterios seleccionados</td>
+                </tr>`;
+            }
+        } else {
+            // Formato completo para SP_ReporteJornadasLaborales
+            html = `
+                <table id="tabla_jornadas" class="table table-striped table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th class="text-center">Fecha</th>
+                            <th class="text-center">Día</th>
+                            <th class="text-center">Cargo</th>
+                            <th class="text-center">Nombre</th>
+                            <th class="text-center">Cédula</th>
+                            <th class="text-center">Jornada</th>
+                            <th class="text-center">Inicio Jornada</th>
+                            <th class="text-center">Inicio Receso</th>
+                            <th class="text-center">Total 1ra Jornada</th>
+                            <th class="text-center">Fin Receso</th>
+                            <th class="text-center">Fin Jornada</th>
+                            <th class="text-center">Total 2da Jornada</th>
+                            <th class="text-center">Tiempo Total</th>
+                            <th class="text-center">Sobretiempo</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+            if (data.success && data.data && data.data.registros && data.data.registros.length > 0) {
+                // Agregar filas con datos para formato completo
+                data.data.registros.forEach(item => {
+                    html += `<tr>
+                        <td>${item.fecha || ''}</td>
+                        <td>${item.diaSemana || ''}</td>
+                        <td>${item.cargo || 'NO ESPECIFICADO'}</td>
+                        <td>${item.nombreTrabajador || ''}</td>
+                        <td>${item.cedula || ''}</td>
+                        <td>${item.jornada || ''}</td>
+                        <td>${item.inicioJornada || 'NO MARCADO'}</td>
+                        <td>${item.inicioReceso || 'NO MARCADO'}</td>
+                        <td>${item.totalPrimeraJornada || 'N/A'}</td>
+                        <td>${item.finReceso || 'NO MARCADO'}</td>
+                        <td>${item.finJornada || 'NO MARCADO'}</td>
+                        <td>${item.totalSegundaJornada || 'N/A'}</td>
+                        <td>${item.tiempoTotalTrabajado || ''}</td>
+                        <td>${item.sobretiempo || ''}</td>
+                    </tr>`;
+                });
+            } else {
+                // Mensaje para tabla vacía
+                html += `<tr>
+                    <td class="text-center" colspan="14">No se encontraron registros para los criterios seleccionados</td>
+                </tr>`;
+            }
+        }
+
+        html += `</tbody></table>`;
+
+        // Actualizar el contenedor con la tabla
+        document.getElementById('div_tabla_centrotrabajo').innerHTML = html;
+
+        // Verificar si hay datos antes de inicializar DataTable
+        if (data.success && data.data && data.data.registros && data.data.registros.length > 0) {
+            // Destruir DataTable si ya existe
+            if ($.fn.DataTable.isDataTable('#tabla_jornadas')) {
+                $('#tabla_jornadas').DataTable().destroy();
+            }
+
+            // Inicializar DataTable con configuraciones según el formato
+            $('#tabla_jornadas').DataTable({
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/9dcbecd42ad/i18n/Spanish.json"
+                },
+                "ordering": true,
+                "searching": true,
+                "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "Todos"]],
+                "pageLength": 10,
+                "dom": 'Bfrtip',
+                "buttons": [
+                    'excel',
+                    'pdf',
+                    'print'
+                ],
+                "responsive": true,
+                // Configurar cuál columna no es ordenable según el formato
+                "columnDefs": esFormatoSimple ? [] : [
+                    { "orderable": false, "targets": [8, 11] } // Las columnas de totales no son ordenables
+                ]
+            });
+
+            // Mostrar contador de registros
+            alertify.success(`Se encontraron ${data.data.totalRegistros} registros`);
+        } else {
+            // Para tablas sin datos, aplicar un estilo simple sin inicializar DataTable
+            $('#tabla_jornadas').addClass('simple-table');
+
+            // Mostrar mensaje de no resultados
+            if (data.success) {
+                alertify.message('No se encontraron registros para los criterios seleccionados');
+            } else {
+                alertify.error(data.message || 'Error al procesar la consulta');
+            }
+        }
+
     } catch (error) {
-        console.log(error);
+        console.error('Error al realizar la consulta:', error);
+        document.getElementById('div_tabla_centrotrabajo').innerHTML =
+            `<div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i> 
+                Error al cargar los datos. Por favor intente nuevamente.
+            </div>`;
+        alertify.error('Error al procesar la consulta. Por favor, intente de nuevo.');
     }
 }
 
-async function list_Centrotrabajo(object) {
+async function list_Centrotrabajo(object, contexto = 'consulta') {
     try {
-        // 1. Resetear formulario
-        $('#ButtonCancelar').hide();
-        document.getElementById("idActividad").value = "";
-        document.getElementById("Descripcion").value = "";
-        document.getElementById("fecha_ini").value = "";
-        $('#idTiquete').find('option').remove();
+        // 1. Resetear formulario si es necesario
+        if (contexto === 'consulta') {
+            $('#ButtonCancelar').hide();
+            document.getElementById("idActividad").value = "";
+            document.getElementById("Descripcion").value = "";
+            document.getElementById("fecha_ini").value = "";
+            $('#idTiquete').find('option').remove();
 
-        // Resetear estado del botón
-        $('#button')
-            .attr('onclick', 'save();')
-            .removeClass('btn-warning')
-            .addClass('btn btn-primary')
-            .text('Guardar');
+            // Resetear estado del botón
+            $('#button')
+                .attr('onclick', 'save();')
+                .removeClass('btn-warning')
+                .addClass('btn btn-primary')
+                .text('Guardar');
+        }
 
-        // 2. Obtener elementos necesarios
-        const inputCentro = document.getElementById("CentroTrabajo"); // Input del centro de trabajo
-        const list_Centro = document.getElementById("list_Centrotrabajo");
+        // 2. Obtener elementos según el contexto
+        const inputId = contexto === 'asignar' ? "CentroTrabajo_asignar" : "CentroTrabajo_consulta";
+        const datalistId = contexto === 'asignar' ? "list_Centrotrabajo_asignar" : "list_Centrotrabajo_consulta";
+
+        const inputCentro = document.getElementById(inputId);
+        const list_Centro = document.getElementById(datalistId);
+
         if (!list_Centro || !inputCentro) {
-            throw new Error('Elementos necesarios no encontrados');
+            throw new Error(`Elementos necesarios no encontrados: ${inputId}, ${datalistId}`);
         }
 
         // 3. Mostrar indicador de carga

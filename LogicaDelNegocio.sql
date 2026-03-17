@@ -323,16 +323,17 @@ BEGIN
     DECLARE @fechaTurno DATE;
     DECLARE @fechaFinTurno DATE;
 
+    -- Validar biométrico y obtener su ID
+    EXEC [dbo].[GET_Biometrico]
+        @identificadorBiometrico, 
+        @idBiometrico OUTPUT;
+
+    -- si id biometrico es Dinastia, enviar un nuevo parametro llamado identificador si no se envía identificación 
     -- Validar usuario y obtener su ID
-    EXEC [dbo].[GET_UsuarioBiometrico] -- GET_UsuarioBiometrico
+    EXEC [dbo].[GET_UsuarioBiometrico]
         @Identificacion, 
         @NombreCompleto, 
         @idUsuario OUTPUT;
-
-    -- Validar biométrico y obtener su ID
-    EXEC [dbo].[GET_Biometrico] -- GET_Biometrico
-        @identificadorBiometrico, 
-        @idBiometrico OUTPUT;
 
     -- Insertar registro si el biométrico existe
     IF @idBiometrico IS NOT NULL
@@ -368,7 +369,7 @@ BEGIN
         IF @tieneTurnoAsignado = 1
         BEGIN
             -- Llamar al procedimiento para determinar el tipo de marcación
-            EXEC [dbo].[GET_TipoMarcacion] -- GET_TipoMarcacion
+            EXEC [dbo].[GET_TipoMarcacion]
                 @Identificacion,
                 @FechaHora,
                 @idBiometrico,
@@ -377,6 +378,7 @@ BEGIN
                 @cruzaDia,
                 @fechaTurno,
                 @fechaFinTurno,
+                @idTurno,  -- Agregamos el parámetro @idTurno
                 @tipoMarcacion OUTPUT,
                 @observacion OUTPUT;
         END
@@ -483,127 +485,11 @@ BEGIN
     RETURN 0;
 END;
 
-/* -------------------------------------------------- */
-/* Procedimiento para procesar marcaciones biométricas */
-/* -------------------------------------------------- */
-CREATE PROCEDURE [dbo].[ProcesarMarcacionBiometrica]
-    @identificacion VARCHAR(15),
-    @fechaHora DATETIME,
-    @idBiometrico UNIQUEIDENTIFIER,
-    @tipoMarcacion VARCHAR(20) OUTPUT,
-    @observacion VARCHAR(255) OUTPUT
-AS
-BEGIN
-    DECLARE @fechaActual DATE = CAST(@fechaHora AS DATE)
-    DECLARE @horaActual TIME = CAST(@fechaHora AS TIME)
-    DECLARE @idUsuario UNIQUEIDENTIFIER
-    DECLARE @toleranciaMinutos INT = 30
-    -- Configurable
-
-    -- Inicializar variables con valores por defecto
-    SET @tipoMarcacion = 'Sin Definir'
-    SET @observacion = NULL
-
-    -- Obtener idUsuario
-    SELECT @idUsuario = idUsuario
-    FROM [dbo].[vUsuariosAppBiometrico]
-    WHERE Identificacion = @identificacion
-
-    -- Verificar si es primera marcación del día
-    IF NOT EXISTS (
-        SELECT 1
-    FROM Bitacora
-    WHERE Identificacion = @identificacion
-        AND CAST(FechaHora AS DATE) = @fechaActual
-    )
-    BEGIN
-        -- Verificar contra el turno programado
-        DECLARE @horaInicioTurno TIME, @horaFinTurno TIME
-
-        SELECT TOP 1
-            @horaInicioTurno = T.horaInicio, @horaFinTurno = T.horaFin
-        FROM ProgramacionTurnosDetalle PD
-            INNER JOIN ProgramacionTurnos P ON PD.idProgramacion = P.idProgramacion
-            INNER JOIN Turnos T ON PD.idTurno = T.idTurno
-        WHERE P.idUsuario = @idUsuario
-            AND PD.fecha = @fechaActual
-            AND P.activo = 1
-        ORDER BY P.fechaRegistro DESC
-
-        IF @horaInicioTurno IS NOT NULL
-        BEGIN
-            -- Determinar si está dentro del rango de inicio de turno
-            IF DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) BETWEEN -@toleranciaMinutos AND 120
-            BEGIN
-                SET @tipoMarcacion = 'Entrada'
-
-                -- Registrar llegada tardía si aplica
-                IF @horaActual > @horaInicioTurno
-                    SET @observacion = 'Llegada tardía: ' + CAST(DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) AS VARCHAR) + ' minutos'
-            END
-            ELSE IF DATEDIFF(MINUTE, @horaFinTurno, @horaActual) BETWEEN -120 AND @toleranciaMinutos
-            BEGIN
-                SET @tipoMarcacion = 'Salida'
-
-                -- Registrar salida anticipada si aplica
-                IF @horaActual < @horaFinTurno
-                    SET @observacion = 'Salida anticipada: ' + CAST(DATEDIFF(MINUTE, @horaActual, @horaFinTurno) AS VARCHAR) + ' minutos'
-            END
-            ELSE
-            BEGIN
-                SET @tipoMarcacion = 'Fuera de turno'
-                SET @observacion = 'Marcación fuera del horario programado'
-            END
-        END
-        ELSE
-        BEGIN
-            -- No hay turno programado, asumir entrada
-            SET @tipoMarcacion = 'Entrada'
-            SET @observacion = 'Sin turno programado'
-        END
-    END
-    ELSE
-    BEGIN
-        -- Ya hay marcaciones previas ese día
-        DECLARE @ultimaMarcacion DATETIME
-        DECLARE @tipoUltimaMarcacion VARCHAR(20)
-
-        SELECT TOP 1
-            @ultimaMarcacion = FechaHora, @tipoUltimaMarcacion = tipoMarcacion
-        FROM Bitacora
-        WHERE Identificacion = @identificacion
-            AND CAST(FechaHora AS DATE) = @fechaActual
-        ORDER BY FechaHora DESC
-
-        IF DATEDIFF(MINUTE, @ultimaMarcacion, @fechaHora) >= @toleranciaMinutos
-        BEGIN
-            -- Alternar entre entrada y salida
-            SET @tipoMarcacion = CASE 
-                     WHEN @tipoUltimaMarcacion = 'Entrada' THEN 'Salida' 
-                     WHEN @tipoUltimaMarcacion = 'Salida' THEN 'Entrada'
-                     WHEN @tipoUltimaMarcacion IS NULL THEN 'Entrada'
-                     ELSE 'Entrada' 
-                     END
-        END
-        ELSE
-        BEGIN
-            SET @tipoMarcacion = 'Duplicada'
-            SET @observacion = 'Marcación duplicada dentro de ' + CAST(@toleranciaMinutos AS VARCHAR) + ' minutos'
-        END
-    END
-
-    -- Garantizar que nunca se devuelva NULL
-    IF @tipoMarcacion IS NULL
-    BEGIN
-        SET @tipoMarcacion = 'Sin Definir'
-        SET @observacion = ISNULL(@observacion, '') + ' - Tipo de marcación indeterminado'
-    END
-END;
 
 /* -------------------------------------------------- */
 /* Procedimiento para obtener el tipo de marcacion    */
 /* -------------------------------------------------- */
-CREATE OR ALTER PROCEDURE [dbo].[GET_TipoMarcacion]
+CREATE PROCEDURE [dbo].[GET_TipoMarcacion]
     @identificacion VARCHAR(15),
     @fechaHora DATETIME,
     @idBiometrico UNIQUEIDENTIFIER,
@@ -612,6 +498,7 @@ CREATE OR ALTER PROCEDURE [dbo].[GET_TipoMarcacion]
     @cruzaDia BIT = 0,
     @fechaTurno DATE = NULL,
     @fechaFinTurno DATE = NULL,
+    @idTurno UNIQUEIDENTIFIER = NULL,
     @tipoMarcacion VARCHAR(20) OUTPUT,
     @observacion VARCHAR(255) OUTPUT
 AS
@@ -619,17 +506,41 @@ BEGIN
     DECLARE @fechaActual DATE = CAST(@fechaHora AS DATE);
     DECLARE @horaActual TIME = CAST(@fechaHora AS TIME);
     DECLARE @toleranciaMinutos INT = 30;
-    -- Configurable
     DECLARE @margenEntradaMinutos INT = 120;
-    -- Nueva variable configurable para el tiempo de entrada
-    DECLARE @margenSalidaMinutos INT = 120;
-    -- Nueva variable configurable para el tiempo de salida
+    DECLARE @margenSalidaMinutos INT = 180;
+    -- Aumentado para capturar salidas tempranas
+
+    -- Variables para descansos
+    DECLARE @horaInicioDescanso TIME = NULL;
+    DECLARE @horaFinDescanso TIME = NULL;
+    DECLARE @estaEnDescanso BIT = 0;
+    DECLARE @esHoraCercanaDescanso BIT = 0;
+
+    -- Variables para marcaciones previas
+    DECLARE @ultimaMarcacion DATETIME = NULL;
+    DECLARE @tipoUltimaMarcacion VARCHAR(20) = NULL;
+    DECLARE @horaUltimaMarcacion TIME = NULL;
+    DECLARE @observacionUltimaMarcacion VARCHAR(255) = NULL;
+
+    -- Variables para conteo de marcaciones
+    DECLARE @totalMarcacionesDia INT;
+    DECLARE @totalEntradasDia INT = 0;
+    DECLARE @totalSalidasDia INT = 0;
+    DECLARE @esperaSalida BIT = 0;
+
+    -- Variables para análisis de marcaciones de descanso
+    DECLARE @haySalidaDescanso BIT = 0;
+    DECLARE @hayReingresoDescanso BIT = 0;
+
+    -- Variable para verificar si ya hay una salida de fin de turno
+    DECLARE @yaHaySalidaFinTurno BIT = 0;
+    DECLARE @horaUltimaSalidaTurno TIME = NULL;
 
     -- Inicializar variables
     SET @tipoMarcacion = NULL;
     SET @observacion = NULL;
 
-    -- Si no hay información de turno (todos los parámetros son NULL)
+    -- Si no hay información de turno
     IF @horaInicioTurno IS NULL AND @horaFinTurno IS NULL
     BEGIN
         SET @tipoMarcacion = 'Sin turno asignado';
@@ -637,191 +548,316 @@ BEGIN
         RETURN;
     END
 
-    -- Obtener el total de marcaciones para este usuario en este día
-    DECLARE @totalMarcacionesDia INT;
-    SELECT @totalMarcacionesDia = COUNT(*)
-    FROM [dbo].[Bitacora]
-    WHERE 
-        Identificacion = @identificacion
-        AND CAST(FechaHora AS DATE) = @fechaActual;
+    -- Obtener información del turno y descansos
+    IF @idTurno IS NOT NULL AND @idTurno != '00000000-0000-0000-0000-000000000001'
+    BEGIN
+        SELECT TOP 1
+            @horaInicioDescanso = TD.horaInicio,
+            @horaFinDescanso = TD.horaFin
+        FROM [dbo].[TurnosDescansos] TD
+        WHERE TD.idTurno = @idTurno AND TD.activo = 1;
 
-    -- Obtener la posición de esta marcación en la secuencia diaria
-    DECLARE @posicionMarcacion INT;
-    SELECT @posicionMarcacion = COUNT(*)
-    FROM [dbo].[Bitacora]
-    WHERE 
-        Identificacion = @identificacion
-        AND CAST(FechaHora AS DATE) = @fechaActual
-        AND FechaHora <= @fechaHora;
+        -- Verificar si está dentro del período de descanso con tolerancia
+        IF @horaInicioDescanso IS NOT NULL AND @horaFinDescanso IS NOT NULL
+        BEGIN
+            IF @horaFinDescanso > @horaInicioDescanso
+            BEGIN
+                -- Descanso normal (no cruza medianoche)
+                IF @horaActual BETWEEN DATEADD(MINUTE, -15, @horaInicioDescanso) AND DATEADD(MINUTE, 15, @horaFinDescanso)
+                    SET @estaEnDescanso = 1;
+            END
+            ELSE
+            BEGIN
+                -- Descanso cruza medianoche
+                IF @horaActual >= DATEADD(MINUTE, -15, @horaInicioDescanso) OR @horaActual <= DATEADD(MINUTE, 15, @horaFinDescanso)
+                    SET @estaEnDescanso = 1;
+            END
 
-    -- Obtener secuencia anterior si existe
-    DECLARE @tipoMarcacionAnterior VARCHAR(20) = NULL;
+            -- Verificar si está cerca del período de descanso
+            IF DATEDIFF(MINUTE, @horaActual, @horaInicioDescanso) BETWEEN -30 AND 30 OR
+                DATEDIFF(MINUTE, @horaActual, @horaFinDescanso) BETWEEN -30 AND 30
+                SET @esHoraCercanaDescanso = 1;
+        END
+    END
+
+    -- Obtener última marcación válida del día (excluyendo duplicadas)
     SELECT TOP 1
-        @tipoMarcacionAnterior = tipoMarcacion
+        @ultimaMarcacion = FechaHora,
+        @tipoUltimaMarcacion = tipoMarcacion,
+        @horaUltimaMarcacion = CAST(FechaHora AS TIME),
+        @observacionUltimaMarcacion = observacion
     FROM [dbo].[Bitacora]
-    WHERE 
-        Identificacion = @identificacion
+    WHERE Identificacion = @identificacion
         AND CAST(FechaHora AS DATE) = @fechaActual
         AND FechaHora < @fechaHora
+        AND tipoMarcacion IN ('Entrada', 'Salida', 'Reingreso')
+        AND tipoMarcacion != 'Duplicada'
     ORDER BY FechaHora DESC;
 
-    -- 1. Verificar si estamos en un turno que cruza días
-    IF @cruzaDia = 1 
-    BEGIN
-        -- Si estamos en la fecha de fin del turno (segundo día)
-        IF @fechaActual = @fechaFinTurno AND @fechaActual > @fechaTurno
-        BEGIN
-            -- Si es antes de la hora de fin, probablemente es una salida
-            IF @horaActual <= @horaFinTurno
-            BEGIN
-                SET @tipoMarcacion = 'Salida';
-                SET @observacion = 'Salida de turno nocturno';
-            END
-            -- Si es después de la hora de fin, podría ser una entrada para el siguiente turno
-            ELSE
-            BEGIN
-                SET @tipoMarcacion = 'Entrada';
-                SET @observacion = 'Posible entrada para turno posterior';
-            END
-        END
-        -- Si estamos en la fecha de inicio del turno (primer día)
-        ELSE IF @fechaActual = @fechaTurno
-        BEGIN
-            -- Si es cercano a la hora de inicio, es una entrada
-            IF DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) BETWEEN -@toleranciaMinutos AND @margenEntradaMinutos
-            BEGIN
-                SET @tipoMarcacion = 'Entrada';
+    -- Obtener total de marcaciones del día (excluyendo duplicadas)
+    SELECT
+        @totalMarcacionesDia = COUNT(*),
+        @totalEntradasDia = SUM(CASE WHEN tipoMarcacion IN ('Entrada', 'Reingreso') THEN 1 ELSE 0 END),
+        @totalSalidasDia = SUM(CASE WHEN tipoMarcacion = 'Salida' THEN 1 ELSE 0 END)
+    FROM [dbo].[Bitacora]
+    WHERE Identificacion = @identificacion
+        AND CAST(FechaHora AS DATE) = @fechaActual
+        AND FechaHora < @fechaHora
+        AND tipoMarcacion IN ('Entrada', 'Salida', 'Reingreso')
+        AND tipoMarcacion != 'Duplicada';
 
-                -- Registrar si llegó tarde
-                IF @horaActual > @horaInicioTurno
-                    SET @observacion = 'Llegada tardía: ' + CAST(DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) AS VARCHAR) + ' minutos';
-                ELSE
-                    SET @observacion = 'Entrada a turno programado';
-            END
-            -- Si es muy tarde en el primer día, podría ser salida anticipada
-            ELSE
-            BEGIN
-                SET @tipoMarcacion = 'Salida';
-                SET @observacion = 'Posible salida anticipada de turno nocturno';
-            END
-        END
+    -- Verificar si ya existen marcaciones de descanso
+    SELECT
+        @haySalidaDescanso = CASE WHEN EXISTS (
+            SELECT 1
+        FROM [dbo].[Bitacora]
+        WHERE Identificacion = @identificacion
+            AND CAST(FechaHora AS DATE) = @fechaActual
+            AND tipoMarcacion = 'Salida'
+            AND observacion LIKE '%Salida a descanso%'
+        ) THEN 1 ELSE 0 END,
+        @hayReingresoDescanso = CASE WHEN EXISTS (
+            SELECT 1
+        FROM [dbo].[Bitacora]
+        WHERE Identificacion = @identificacion
+            AND CAST(FechaHora AS DATE) = @fechaActual
+            AND tipoMarcacion = 'Reingreso'
+            AND observacion LIKE '%Reingreso%descanso%'
+        ) THEN 1 ELSE 0 END;
+
+    -- Verificar si ya existe una salida de fin de turno y obtener su hora
+    SELECT TOP 1
+        @horaUltimaSalidaTurno = CAST(FechaHora AS TIME)
+    FROM [dbo].[Bitacora]
+    WHERE Identificacion = @identificacion
+        AND CAST(FechaHora AS DATE) = @fechaActual
+        AND tipoMarcacion = 'Salida'
+        AND observacion = 'Salida de turno'
+    ORDER BY FechaHora DESC;
+
+    IF @horaUltimaSalidaTurno IS NOT NULL
+        SET @yaHaySalidaFinTurno = 1;
+    ELSE
+        SET @yaHaySalidaFinTurno = 0;
+
+    -- LÓGICA PRINCIPAL DE DETERMINACIÓN DE TIPO DE MARCACIÓN
+
+    -- 1. Primera marcación del día
+    IF @ultimaMarcacion IS NULL OR @tipoUltimaMarcacion IS NULL
+    BEGIN
+        -- Primera marcación siempre es entrada
+        SET @tipoMarcacion = 'Entrada';
+
+        -- Determinar si está a tiempo o tarde
+        IF DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) > 0
+            SET @observacion = 'Llegada tardía: ' + CAST(DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) AS VARCHAR) + ' minutos';
+        ELSE
+            SET @observacion = 'Entrada a turno programado';
     END
-    -- 2. Para turnos que no cruzan días
+    -- 2. Marcaciones subsecuentes
     ELSE
     BEGIN
-        -- Primera marcación del día
-        IF @posicionMarcacion = 1
+        -- REGLA NUEVA: Validar secuencias de descanso incompletas cerca del fin de turno
+        IF @haySalidaDescanso = 1 AND @hayReingresoDescanso = 0 AND
+            DATEDIFF(MINUTE, @horaActual, @horaFinTurno) BETWEEN 0 AND 120
         BEGIN
-            -- Si está cerca del inicio del turno, es entrada
-            IF DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) BETWEEN -@toleranciaMinutos AND @margenEntradaMinutos
-            BEGIN
-                SET @tipoMarcacion = 'Entrada';
-
-                -- Registrar si llegó tarde
-                IF @horaActual > @horaInicioTurno
-                    SET @observacion = 'Llegada tardía: ' + CAST(DATEDIFF(MINUTE, @horaInicioTurno, @horaActual) AS VARCHAR) + ' minutos';
-                ELSE
-                    SET @observacion = 'Entrada a turno programado';
-            END
-            -- Si está cerca del fin del turno pero es la primera marcación, algo raro pasa
-            ELSE IF DATEDIFF(MINUTE, @horaFinTurno, @horaActual) BETWEEN -@margenSalidaMinutos AND @toleranciaMinutos
-            BEGIN
-                SET @tipoMarcacion = 'Salida';
-                SET @observacion = 'Marcación única cerca del fin de turno';
-            END
-            ELSE
-            BEGIN
-                SET @tipoMarcacion = 'Entrada';
-                SET @observacion = 'Entrada fuera de rango esperado';
-            END
+            -- Si está en horario de salida y faltó reingreso de descanso
+            SET @tipoMarcacion = 'Salida';
+            SET @observacion = 'Salida de turno - reingreso de descanso faltante';
         END
-        -- Segunda o posterior marcación del día
-        ELSE
+        -- Si es la hora de fin de turno (dentro del margen)
+        ELSE IF DATEDIFF(MINUTE, @horaActual, @horaFinTurno) BETWEEN -@margenSalidaMinutos AND @margenSalidaMinutos
         BEGIN
-            -- Si es la última marcación del día y está cerca del fin de turno
-            IF @posicionMarcacion = @totalMarcacionesDia AND
-                DATEDIFF(MINUTE, @horaActual, @horaFinTurno) BETWEEN -@margenSalidaMinutos AND @toleranciaMinutos
+            -- Caso especial: Si la última marcación fue salida a descanso sin reingreso
+            IF @tipoUltimaMarcacion = 'Salida' AND
+                @observacionUltimaMarcacion LIKE '%descanso%' AND
+                @hayReingresoDescanso = 0
             BEGIN
                 SET @tipoMarcacion = 'Salida';
-
-                -- Registrar si salió antes
-                IF @horaActual < @horaFinTurno
-                    SET @observacion = 'Salida anticipada: ' + CAST(DATEDIFF(MINUTE, @horaActual, @horaFinTurno) AS VARCHAR) + ' minutos';
-                ELSE
-                    SET @observacion = 'Salida de turno programado';
+                SET @observacion = 'Salida de turno - reingreso de descanso faltante';
             END
-            -- Si no es la última pero el tipo anterior fue entrada, esta debe ser salida
-            ELSE IF @tipoMarcacionAnterior = 'Entrada'
+            -- Caso especial: Si la última marcación fue entrada después de salida a descanso
+            ELSE IF @tipoUltimaMarcacion = 'Entrada' AND
+                @haySalidaDescanso = 1 AND
+                @hayReingresoDescanso = 0
             BEGIN
                 SET @tipoMarcacion = 'Salida';
-                SET @observacion = 'Salida intermedia durante turno';
+                SET @observacion = 'Salida de turno - secuencia de descanso incompleta';
             END
-            -- Si el tipo anterior fue salida, esta debe ser entrada
-            ELSE IF @tipoMarcacionAnterior = 'Salida'
-            BEGIN
-                SET @tipoMarcacion = 'Entrada';
-                SET @observacion = 'Reingreso durante turno';
-            END
-            -- Si no hay tipo anterior claro o es el caso de una duplicada
+            -- Verificar si es realmente una salida de turno o una marcación intermedia
             ELSE
             BEGIN
-                -- Verificar si está más cerca del inicio o del fin del turno
-                IF ABS(DATEDIFF(MINUTE, @horaActual, @horaInicioTurno)) < ABS(DATEDIFF(MINUTE, @horaActual, @horaFinTurno))
+                DECLARE @minutosDesdeUltimaMarcacion INT = DATEDIFF(MINUTE, ISNULL(@ultimaMarcacion, '1900-01-01'), @fechaHora);
+
+                -- Solo considerar duplicada si:
+                -- 1. Ya hay una salida de turno registrada
+                -- 2. La diferencia con la última marcación es menor a 30 minutos
+                -- 3. La última marcación fue una salida de turno
+                IF @yaHaySalidaFinTurno = 1 AND
+                    @minutosDesdeUltimaMarcacion < 30 AND
+                    @tipoUltimaMarcacion = 'Salida' AND
+                    @observacionUltimaMarcacion LIKE '%Salida de turno%'
                 BEGIN
-                    SET @tipoMarcacion = 'Entrada';
-                    SET @observacion = 'Entrada determinada por cercanía a inicio de turno';
+                    SET @tipoMarcacion = 'Duplicada';
+                    SET @observacion = 'Marcación duplicada - ya existe una salida registrada para el fin de turno';
                 END
                 ELSE
+                BEGIN
+                    -- Es una salida legítima de turno
+                    SET @tipoMarcacion = 'Salida';
+                    SET @observacion = 'Salida de turno';
+
+                    -- Verificar secuencia de descanso
+                    IF @haySalidaDescanso = 1 AND @hayReingresoDescanso = 0
+                        SET @observacion = @observacion + ' - posible reingreso de descanso faltante';
+
+                    -- Si la última marcación fue una salida (no de turno), cambiar a entrada
+                    IF @tipoUltimaMarcacion = 'Salida' AND @observacionUltimaMarcacion NOT LIKE '%Salida de turno%'
+                    BEGIN
+                        SET @tipoMarcacion = 'Entrada';
+                        SET @observacion = 'Entrada adicional - posible error en secuencia';
+                    END
+                END
+            END
+        END
+        -- Si la marcación está en horario de salida pero está clasificada como entrada
+        ELSE IF @tipoMarcacion = 'Entrada' AND
+            DATEDIFF(MINUTE, @horaActual, @horaFinTurno) BETWEEN -@margenSalidaMinutos AND @margenSalidaMinutos
+        BEGIN
+            -- Reclasificar como salida si hay inconsistencias previas
+            IF @haySalidaDescanso = 1 AND @hayReingresoDescanso = 0
+            BEGIN
+                SET @tipoMarcacion = 'Salida';
+                SET @observacion = 'Salida de turno (reclasificada) - secuencia de descanso incompleta';
+            END
+        END
+        -- Si está en período de descanso o cerca
+        ELSE IF @estaEnDescanso = 1 OR @esHoraCercanaDescanso = 1
+        BEGIN
+            -- Si la última marcación fue entrada/reingreso y estamos cerca del inicio del descanso
+            IF @tipoUltimaMarcacion IN ('Entrada', 'Reingreso') AND
+                DATEDIFF(MINUTE, @horaActual, @horaInicioDescanso) BETWEEN -30 AND 30
+            BEGIN
+                SET @tipoMarcacion = 'Salida';
+                SET @observacion = 'Salida a descanso';
+            END
+            -- Si la última marcación fue salida y estamos cerca del fin del descanso
+            ELSE IF @tipoUltimaMarcacion = 'Salida' AND
+                (@observacionUltimaMarcacion LIKE '%descanso%' OR @observacionUltimaMarcacion LIKE '%Salida a%') AND
+                DATEDIFF(MINUTE, @horaActual, @horaFinDescanso) BETWEEN -30 AND 30
+            BEGIN
+                SET @tipoMarcacion = 'Reingreso';
+                SET @observacion = 'Reingreso de descanso';
+            END
+            -- Si está dentro del período de descanso
+            ELSE IF @estaEnDescanso = 1
+            BEGIN
+                -- Si la última fue entrada/reingreso, esta debe ser salida
+                IF @tipoUltimaMarcacion IN ('Entrada', 'Reingreso')
                 BEGIN
                     SET @tipoMarcacion = 'Salida';
-                    SET @observacion = 'Salida determinada por cercanía a fin de turno';
+                    SET @observacion = 'Salida a descanso';
+                END
+                -- Si la última fue salida (de descanso), esta debe ser reingreso
+                ELSE IF @tipoUltimaMarcacion = 'Salida' AND
+                    (@observacionUltimaMarcacion LIKE '%descanso%' OR @observacionUltimaMarcacion LIKE '%Salida a%')
+                BEGIN
+                    SET @tipoMarcacion = 'Reingreso';
+                    SET @observacion = 'Reingreso de descanso';
+                END
+            END
+        END
+        -- Lógica estándar de alternancia
+        ELSE
+        BEGIN
+            -- Si la última marcación fue entrada/reingreso, esta debe ser salida
+            IF @tipoUltimaMarcacion IN ('Entrada', 'Reingreso')
+            BEGIN
+                SET @tipoMarcacion = 'Salida';
+
+                -- Determinar el tipo de salida según la hora
+                IF @horaInicioDescanso IS NOT NULL AND
+                    ABS(DATEDIFF(MINUTE, @horaActual, @horaInicioDescanso)) <= 60
+                BEGIN
+                    SET @observacion = 'Salida a descanso';
+                END
+                -- Si está cerca del fin del turno pero no lo suficiente para ser salida de turno
+                ELSE IF DATEDIFF(MINUTE, @horaActual, @horaFinTurno) BETWEEN 30 AND @margenSalidaMinutos
+                BEGIN
+                    SET @observacion = 'Salida intermedia cerca del fin de turno';
+                END
+                ELSE
+                BEGIN
+                    SET @observacion = 'Salida intermedia durante turno';
+                END
+            END
+            -- Si la última marcación fue salida, esta debe ser entrada/reingreso
+            ELSE
+            BEGIN
+                -- Si ya hubo salida a descanso pero no reingreso
+                IF @haySalidaDescanso = 1 AND @hayReingresoDescanso = 0
+                BEGIN
+                    SET @tipoMarcacion = 'Reingreso';
+                    SET @observacion = 'Reingreso de descanso';
+                END
+                -- Si estamos después del período típico de descanso
+                ELSE IF @horaInicioDescanso IS NOT NULL AND @horaActual > DATEADD(MINUTE, 30, @horaFinDescanso)
+                BEGIN
+                    SET @tipoMarcacion = 'Reingreso';
+                    SET @observacion = 'Reingreso durante turno';
+                END
+                ELSE
+                BEGIN
+                    SET @tipoMarcacion = 'Entrada';
+                    SET @observacion = 'Entrada adicional durante turno';
                 END
             END
         END
     END
 
-END;
-GO
-
-/* -------------------------------------------------- */
-/* Procedimiento para asociar marcaciones con turnos  */
-/* programados  */
-/* -------------------------------------------------- */
-CREATE PROCEDURE [dbo].[AsociarMarcacionConTurno]
-    @Identificacion VARCHAR(15),
-    @FechaHora DATETIME,
-    @idProgramacionDetalle UNIQUEIDENTIFIER OUTPUT,
-    @idTurno UNIQUEIDENTIFIER OUTPUT
-AS
-BEGIN
-    DECLARE @idUsuario UNIQUEIDENTIFIER;
-    DECLARE @FechaMarcacion DATE = CAST(@FechaHora AS DATE);
-
-    -- 1. Obtener el idUsuario a partir de la identificación usando la vista
-    SELECT @idUsuario = idUsuario
-    FROM [dbo].[vUsuariosAppBiometrico]
-    WHERE Identificacion = @Identificacion;
-
-    -- 2. Buscar la programación activa para esa fecha
-    SELECT @idProgramacionDetalle = PD.idProgramacionDetalle,
-        @idTurno = PD.idTurno
-    FROM [dbo].[ProgramacionTurnos] PT
-        INNER JOIN [dbo].[ProgramacionTurnosDetalle] PD
-        ON PT.idProgramacion = PD.idProgramacion
-    WHERE PT.idUsuario = @idUsuario
-        AND PD.fecha = @FechaMarcacion
-        AND PT.activo = 1
-        AND PT.fechaInicio <= @FechaMarcacion
-        AND PT.fechaFin >= @FechaMarcacion;
-
-    -- 3. Si no se encuentra programación, asignar un ID genérico
-    IF @idProgramacionDetalle IS NULL OR @idTurno IS NULL
+    -- Verificar marcaciones muy cercanas (posibles duplicados)
+    IF @ultimaMarcacion IS NOT NULL AND DATEDIFF(MINUTE, @ultimaMarcacion, @fechaHora) < 2
     BEGIN
-        SET @idProgramacionDetalle = '00000000-0000-0000-0000-000000000001';
-        SET @idTurno = '00000000-0000-0000-0000-000000000001';
+        -- No marcar como duplicada si es una salida de turno legítima
+        IF NOT (@tipoMarcacion = 'Salida' AND @observacion = 'Salida de turno' AND
+            DATEDIFF(MINUTE, @horaActual, @horaFinTurno) BETWEEN -@margenSalidaMinutos AND @margenSalidaMinutos)
+        BEGIN
+            SET @tipoMarcacion = 'Duplicada';
+            SET @observacion = 'Marcación duplicada - muy cercana a la anterior';
+        END
+    END
+
+    -- Garantizar que siempre haya un tipo de marcación
+    IF @tipoMarcacion IS NULL
+    BEGIN
+        SET @tipoMarcacion = 'Sin Definir';
+        SET @observacion = ISNULL(@observacion, '') + ' - Tipo de marcación indeterminado';
+    END
+
+    -- Registrar alerta si hay secuencia de descanso incompleta
+    IF @haySalidaDescanso = 1 AND @hayReingresoDescanso = 0 AND
+        @tipoMarcacion = 'Salida' AND @observacion LIKE '%faltante%'
+    BEGIN
+        DECLARE @idUsuario UNIQUEIDENTIFIER;
+
+        -- Obtener ID del usuario
+        SELECT TOP 1
+            @idUsuario = idUsuario
+        FROM [dbo].[vUsuariosAppBiometrico]
+        WHERE Identificacion = @identificacion;
+
+        -- Insertar alerta (si existe la tabla)
+        IF OBJECT_ID('dbo.AlertasMarcaciones', 'U') IS NOT NULL
+        BEGIN
+            INSERT INTO AlertasMarcaciones
+                (idUsuario, fecha, tipo, descripcion)
+            VALUES
+                (@idUsuario, @fechaActual, 'DescansoIncompleto',
+                    'Secuencia de descanso incompleta - Falta reingreso después de salida a descanso');
+        END
     END
 END;
-
+GO
 
 /*  -------------------------------------------------- */
 /* Procedimiento para guardar turnos */
@@ -1154,10 +1190,8 @@ BEGIN
         AND CAST(B.FechaHora AS DATE) BETWEEN @fechaInicio AND @fechaFin
         AND PT.activo = 1
         AND (
-            -- La fecha de la marcación es igual a la fecha de inicio del turno
             (CAST(B.FechaHora AS DATE) = PD.fechaInicio)
         OR
-        -- La fecha de la marcación es igual a la fecha de fin del turno (para turnos que cruzan días)
         (CAST(B.FechaHora AS DATE) = PD.fechaFin AND PD.fechaInicio < PD.fechaFin)
         );
 
@@ -1166,6 +1200,7 @@ BEGIN
     DECLARE @Identificacion VARCHAR(15);
     DECLARE @FechaHora DATETIME;
     DECLARE @idBiometrico UNIQUEIDENTIFIER;
+    DECLARE @idTurno UNIQUEIDENTIFIER;
     DECLARE @horaInicioTurno TIME;
     DECLARE @horaFinTurno TIME;
     DECLARE @cruzaDia BIT;
@@ -1173,6 +1208,7 @@ BEGIN
     DECLARE @fechaFinTurno DATE;
     DECLARE @tipoMarcacion VARCHAR(20);
     DECLARE @observacion VARCHAR(255);
+    DECLARE @idProgramacionDetalleActual UNIQUEIDENTIFIER;
 
     -- Cursor para procesar cada marcación individualmente
     DECLARE curMarcaciones CURSOR FOR 
@@ -1181,22 +1217,25 @@ BEGIN
         Identificacion,
         FechaHora,
         idBiometrico,
+        idTurno,
         horaInicioTurno,
         horaFinTurno,
         cruzaDia,
         fechaTurno,
-        fechaFinTurno
+        fechaFinTurno,
+        idProgramacionDetalle
     FROM #MarcacionesParaActualizar
     ORDER BY Identificacion, FechaHora;
 
     OPEN curMarcaciones;
     FETCH NEXT FROM curMarcaciones INTO 
-        @idBitacora, @Identificacion, @FechaHora, @idBiometrico, 
-        @horaInicioTurno, @horaFinTurno, @cruzaDia, @fechaTurno, @fechaFinTurno;
+        @idBitacora, @Identificacion, @FechaHora, @idBiometrico, @idTurno,
+        @horaInicioTurno, @horaFinTurno, @cruzaDia, @fechaTurno, @fechaFinTurno,
+        @idProgramacionDetalleActual;
 
     WHILE @@FETCH_STATUS = 0
     BEGIN
-        -- Llamar al nuevo procedimiento para determinar el tipo de marcación
+        -- Llamar al procedimiento para determinar el tipo de marcación
         EXEC [dbo].[GET_TipoMarcacion]
             @Identificacion,
             @FechaHora,
@@ -1206,6 +1245,7 @@ BEGIN
             @cruzaDia,
             @fechaTurno,
             @fechaFinTurno,
+            @idTurno,
             @tipoMarcacion OUTPUT,
             @observacion OUTPUT;
 
@@ -1214,56 +1254,82 @@ BEGIN
         SET 
             tipoMarcacion = @tipoMarcacion,
             observacion = @observacion,
-            -- Actualizar también la referencia al turno
-            idProgramacionDetalle = (SELECT idProgramacionDetalle
-        FROM #MarcacionesParaActualizar
-        WHERE idBitacora = @idBitacora),
-            idTurno = (SELECT idTurno
-        FROM #MarcacionesParaActualizar
-        WHERE idBitacora = @idBitacora)
+            idProgramacionDetalle = @idProgramacionDetalleActual,
+            idTurno = @idTurno
         WHERE 
             idBitacora = @idBitacora;
 
         FETCH NEXT FROM curMarcaciones INTO 
-            @idBitacora, @Identificacion, @FechaHora, @idBiometrico, 
-            @horaInicioTurno, @horaFinTurno, @cruzaDia, @fechaTurno, @fechaFinTurno;
+            @idBitacora, @Identificacion, @FechaHora, @idBiometrico, @idTurno,
+            @horaInicioTurno, @horaFinTurno, @cruzaDia, @fechaTurno, @fechaFinTurno,
+            @idProgramacionDetalleActual;
     END
 
     CLOSE curMarcaciones;
     DEALLOCATE curMarcaciones;
 
-    -- Segunda pasada para corregir inconsistencias en la secuencia
+    -- Segunda pasada para corregir inconsistencias en la secuencia SOLO cuando sea necesario
+    ;
+    WITH
+        SecuenciaCorrecta
+        AS
+        (
+            SELECT
+                B.idBitacora,
+                B.Identificacion,
+                B.FechaHora,
+                B.tipoMarcacion,
+                B.observacion,
+                ROW_NUMBER() OVER (PARTITION BY B.Identificacion, CAST(B.FechaHora AS DATE) ORDER BY B.FechaHora) AS NumMarcacion,
+                LAG(B.tipoMarcacion) OVER (PARTITION BY B.Identificacion, CAST(B.FechaHora AS DATE) ORDER BY B.FechaHora) AS tipoMarcacionAnterior
+            FROM [dbo].[Bitacora] B
+                INNER JOIN #MarcacionesParaActualizar M ON B.idBitacora = M.idBitacora
+            WHERE B.tipoMarcacion != 'Duplicada'
+        )
     UPDATE B
     SET 
         tipoMarcacion = CASE 
-            WHEN PrevMarcacion.tipoMarcacion = B.tipoMarcacion AND PrevMarcacion.tipoMarcacion = 'Entrada' THEN 'Salida'
-            WHEN PrevMarcacion.tipoMarcacion = B.tipoMarcacion AND PrevMarcacion.tipoMarcacion = 'Salida' THEN 'Entrada'
+            WHEN SC.tipoMarcacionAnterior = SC.tipoMarcacion
+        AND SC.tipoMarcacion = 'Entrada'
+        AND SC.observacion NOT LIKE '%descanso%'
+            THEN 'Salida'
+            WHEN SC.tipoMarcacionAnterior = SC.tipoMarcacion
+        AND SC.tipoMarcacion = 'Salida'
+        AND SC.observacion NOT LIKE '%Salida de turno%'
+        AND SC.observacion NOT LIKE '%descanso%'
+            THEN 'Entrada'
             ELSE B.tipoMarcacion
         END,
         observacion = CASE
-            WHEN PrevMarcacion.tipoMarcacion = B.tipoMarcacion THEN 'Corregido por secuencia inconsistente: ' + ISNULL(B.observacion, '')
+            WHEN SC.tipoMarcacionAnterior = SC.tipoMarcacion
+        AND SC.tipoMarcacion = 'Entrada'
+        AND SC.observacion NOT LIKE '%descanso%'
+            THEN 'Salida de turno - posible marcación intermedia faltante'
+            WHEN SC.tipoMarcacionAnterior = SC.tipoMarcacion
+        AND SC.tipoMarcacion = 'Salida'
+        AND SC.observacion NOT LIKE '%Salida de turno%'
+        AND SC.observacion NOT LIKE '%descanso%'
+            THEN 'Entrada adicional - posible marcación intermedia faltante'
             ELSE B.observacion
         END
     FROM [dbo].[Bitacora] B
-    CROSS APPLY (
-        SELECT TOP 1
-            BB.tipoMarcacion
-        FROM [dbo].[Bitacora] BB
-        WHERE 
-            BB.Identificacion = B.Identificacion
-            AND CAST(BB.FechaHora AS DATE) = CAST(B.FechaHora AS DATE)
-            AND BB.FechaHora < B.FechaHora
-        ORDER BY BB.FechaHora DESC
-    ) AS PrevMarcacion
-        INNER JOIN #MarcacionesParaActualizar M ON B.idBitacora = M.idBitacora
-    WHERE 
-        PrevMarcacion.tipoMarcacion = B.tipoMarcacion;
+        INNER JOIN SecuenciaCorrecta SC ON B.idBitacora = SC.idBitacora
+    WHERE SC.tipoMarcacionAnterior = SC.tipoMarcacion
+        AND SC.NumMarcacion > 1
+        AND SC.tipoMarcacion != 'Duplicada'
+        AND (
+        (SC.tipoMarcacion = 'Entrada' AND SC.observacion NOT LIKE '%descanso%')
+        OR
+        (SC.tipoMarcacion = 'Salida' AND SC.observacion NOT LIKE '%Salida de turno%' AND SC.observacion NOT LIKE '%descanso%')
+    );
 
     -- Limpiar tabla temporal
     DROP TABLE #MarcacionesParaActualizar;
 
     -- Retornar conteo de registros actualizados
-    SELECT COUNT(*) AS RegistrosActualizados
+    DECLARE @registrosActualizados INT;
+
+    SELECT @registrosActualizados = COUNT(*)
     FROM [dbo].[Bitacora] B
     WHERE EXISTS (
         SELECT 1
@@ -1279,344 +1345,248 @@ BEGIN
             )
         AND PT.activo = 1
     );
+
+    SELECT @registrosActualizados AS RegistrosActualizados;
 END;
 GO
 
 /* -------------------------------------------------- */
 /* -------------------------------------------------- */
 /* -------------------------------------------------- */
-CREATE OR ALTER PROCEDURE [dbo].[ActualizarMarcacionesSinTurno]
-    @idUsuario UNIQUEIDENTIFIER,
-    @fechaInicio DATE,
-    @fechaFin DATE
+ALTER PROCEDURE [dbo].[GET_ReporteJornadasLaborales]
+    @FechaInicio DATE,
+    @FechaFin DATE,
+    @IdCentroTrabajo UNIQUEIDENTIFIER,
+    @IdUsuario UNIQUEIDENTIFIER = NULL,
+    @Cargo VARCHAR(100) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Crear una tabla temporal para almacenar las marcaciones actualizadas
-    CREATE TABLE #MarcacionesActualizadas
+    -- Validar parámetros requeridos
+    IF @FechaInicio IS NULL OR @FechaFin IS NULL OR @IdCentroTrabajo IS NULL
+    BEGIN
+        RAISERROR('Los parámetros FechaInicio, FechaFin e IdCentroTrabajo son obligatorios', 16, 1);
+        RETURN;
+    END
+
+    -- Crear tabla temporal con tamaños ampliados
+    CREATE TABLE #Resultados
     (
-        idBitacora UNIQUEIDENTIFIER,
-        Identificacion VARCHAR(15),
-        FechaHora DATETIME,
-        idBiometrico UNIQUEIDENTIFIER
+        Fecha DATE,
+        DiaSemana VARCHAR(15),
+        Cargo VARCHAR(100),
+        NombreTrabajador VARCHAR(150),
+        Cedula VARCHAR(20),
+        Jornada VARCHAR(15),
+        InicioJornada TIME,
+        InicioReceso TIME NULL,
+        FinReceso TIME NULL,
+        FinJornada TIME,
+        Total1raJornada VARCHAR(20) NULL,
+        Total2daJornada VARCHAR(20) NULL,
+        TotalTrabajado VARCHAR(20),
+        Sobretiempo VARCHAR(20)
     );
 
-    -- Primero actualizamos los IDs de programación y turno
-    -- y guardamos las marcaciones actualizadas en la tabla temporal
-    UPDATE B
-    SET B.idProgramacionDetalle = PD.idProgramacionDetalle,
-        B.idTurno = PD.idTurno
-    OUTPUT 
-        INSERTED.idBitacora, 
-        INSERTED.Identificacion,
-        INSERTED.FechaHora,
-        INSERTED.idBiometrico
-    INTO #MarcacionesActualizadas
-    FROM [dbo].[Bitacora] B
-        INNER JOIN [dbo].[vUsuariosAppBiometrico] U ON B.Identificacion = U.Identificacion
-        INNER JOIN [dbo].[ProgramacionTurnos] PT ON U.idUsuario = PT.idUsuario
-        INNER JOIN [dbo].[ProgramacionTurnosDetalle] PD ON PT.idProgramacion = PD.idProgramacion
-    WHERE (U.idUsuario = @idUsuario OR @idUsuario IS NULL)
-        AND CAST(B.FechaHora AS DATE) BETWEEN @fechaInicio AND @fechaFin
-        AND CAST(B.FechaHora AS DATE) = PD.fecha
-        AND (B.idProgramacionDetalle IS NULL OR B.idProgramacionDetalle = '00000000-0000-0000-0000-000000000001'
-        OR B.idTurno IS NULL OR B.idTurno = '00000000-0000-0000-0000-000000000001');
+    -- Obtener datos base de marcaciones con manejo explícito de NULLs
+    WITH
+        MarcacionesTurno
+        AS
+        (
+            SELECT
+                u.idUsuario,
+                ISNULL(u.NombreCompleto, '') AS NombreCompleto,
+                ISNULL(u.Identificacion, '') AS Identificacion,
+                ISNULL(u.Cargo, '') AS Cargo,
+                b.FechaHora,
+                ISNULL(b.tipoMarcacion, '') AS tipoMarcacion,
+                ISNULL(b.observacion, '') AS observacion,
+                t.idTurno,
+                ISNULL(t.descripcion, '') AS DescripcionTurno,
+                t.horaInicio AS HoraInicioTurno,
+                t.horaFin AS HoraFinTurno,
+                td.horaInicio AS HoraInicioDescanso,
+                td.horaFin AS HoraFinDescanso,
+                ptd.fechaInicio AS FechaInicioTurno,
+                ptd.fechaFin AS FechaFinTurno,
+                CASE WHEN t.horaFin < t.horaInicio THEN 1 ELSE 0 END AS TurnoNocturno
+            FROM [dbo].[Bitacora] b
+                INNER JOIN [dbo].[vUsuariosAppBiometrico] u ON b.Identificacion = u.Identificacion
+                INNER JOIN [dbo].[Biometricos] bio ON b.idBiometrico = bio.idBiometrico
+                INNER JOIN [dbo].[ProgramacionTurnosDetalle] ptd ON b.idProgramacionDetalle = ptd.idProgramacionDetalle
+                INNER JOIN [dbo].[ProgramacionTurnos] pt ON ptd.idProgramacion = pt.idProgramacion
+                INNER JOIN [dbo].[Turnos] t ON ptd.idTurno = t.idTurno
+                LEFT JOIN [dbo].[TurnosDescansos] td ON t.idTurno = td.idTurno AND td.activo = 1
+            WHERE 
+            CAST(b.FechaHora AS DATE) BETWEEN @FechaInicio AND @FechaFin
+                AND bio.idCentroTrabajo = @IdCentroTrabajo
+                AND (@IdUsuario IS NULL OR u.idUsuario = @IdUsuario)
+                AND (@Cargo IS NULL OR u.Cargo LIKE '%' + @Cargo + '%')
+        ),
 
-    -- Ahora procesamos cada marcación actualizada para recalcular su tipo
-    DECLARE @idBitacora UNIQUEIDENTIFIER;
-    DECLARE @Identificacion VARCHAR(15);
-    DECLARE @FechaHora DATETIME;
-    DECLARE @idBiometrico UNIQUEIDENTIFIER;
-    DECLARE @tipoMarcacion VARCHAR(20);
-    DECLARE @observacion VARCHAR(255);
+        -- Agrupar marcaciones por día y usuario
+        JornadasAgrupadas
+        AS
+        (
+            SELECT
+                idUsuario,
+                MAX(NombreCompleto) AS NombreCompleto,
+                MAX(Identificacion) AS Identificacion,
+                MAX(Cargo) AS Cargo,
+                FechaInicioTurno AS FechaTurno,
+                DATENAME(WEEKDAY, FechaInicioTurno) AS DiaSemana,
+                MAX(DescripcionTurno) AS DescripcionTurno,
+                MAX(HoraInicioTurno) AS HoraInicioTurno,
+                MAX(HoraFinTurno) AS HoraFinTurno,
+                MAX(HoraInicioDescanso) AS HoraInicioDescanso,
+                MAX(HoraFinDescanso) AS HoraFinDescanso,
+                MAX(TurnoNocturno) AS TurnoNocturno,
+                MIN(CASE WHEN tipoMarcacion IN ('Entrada', 'Reingreso') THEN FechaHora ELSE NULL END) AS EntradaReal,
+                MAX(CASE WHEN tipoMarcacion = 'Salida' AND observacion NOT LIKE '%descanso%' THEN FechaHora ELSE NULL END) AS SalidaReal,
+                MIN(CASE WHEN tipoMarcacion = 'Salida' AND observacion LIKE '%descanso%' THEN FechaHora ELSE NULL END) AS SalidaDescanso,
+                MAX(CASE WHEN tipoMarcacion = 'Reingreso' THEN FechaHora ELSE NULL END) AS ReingresoDescanso
+            FROM MarcacionesTurno
+            GROUP BY 
+            idUsuario,
+            FechaInicioTurno,
+            DATENAME(WEEKDAY, FechaInicioTurno)
+        )
 
-    -- Cursor para recorrer las marcaciones actualizadas
-    DECLARE curMarcaciones CURSOR FOR 
-        SELECT idBitacora, Identificacion, FechaHora, idBiometrico
-    FROM #MarcacionesActualizadas;
+    -- Calcular tiempos con manejo de NULLs
+    INSERT INTO #Resultados
+    SELECT
+        FechaTurno AS Fecha,
+        DiaSemana,
+        Cargo,
+        NombreCompleto AS NombreTrabajador,
+        Identificacion AS Cedula,
+        CASE WHEN TurnoNocturno = 1 THEN 'Nocturna' ELSE 'Diurna' END AS Jornada,
 
-    OPEN curMarcaciones;
-    FETCH NEXT FROM curMarcaciones INTO @idBitacora, @Identificacion, @FechaHora, @idBiometrico;
+        CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) AS InicioJornada,
+        CASE 
+            WHEN SalidaDescanso IS NOT NULL THEN CAST(SalidaDescanso AS TIME)
+            WHEN HoraInicioDescanso IS NOT NULL THEN HoraInicioDescanso
+            ELSE NULL 
+        END AS InicioReceso,
 
-    WHILE @@FETCH_STATUS = 0
-    BEGIN
-        -- Llamar al procedimiento existente para determinar el tipo de marcación
-        EXEC [dbo].[ProcesarMarcacionBiometrica]
-            @identificacion = @Identificacion,
-            @fechaHora = @FechaHora,
-            @idBiometrico = @idBiometrico,
-            @tipoMarcacion = @tipoMarcacion OUTPUT,
-            @observacion = @observacion OUTPUT;
+        CASE 
+            WHEN ReingresoDescanso IS NOT NULL THEN CAST(ReingresoDescanso AS TIME)
+            WHEN HoraFinDescanso IS NOT NULL THEN HoraFinDescanso
+            ELSE NULL 
+        END AS FinReceso,
 
-        -- Actualizar la marcación con el tipo recalculado
-        UPDATE [dbo].[Bitacora]
-        SET tipoMarcacion = @tipoMarcacion,
-            observacion = @observacion
-        WHERE idBitacora = @idBitacora;
+        CAST(ISNULL(SalidaReal, '23:59:59') AS TIME) AS FinJornada,
 
-        FETCH NEXT FROM curMarcaciones INTO @idBitacora, @Identificacion, @FechaHora, @idBiometrico;
-    END
+        -- Total 1ra Jornada
+        CASE 
+            WHEN SalidaDescanso IS NOT NULL THEN 
+                CAST(CAST(DATEDIFF(MINUTE, EntradaReal, SalidaDescanso)/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
+            WHEN HoraInicioDescanso IS NOT NULL THEN 
+                CAST(CAST(DATEDIFF(MINUTE, 
+                    CASE WHEN CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) < HoraInicioDescanso 
+                         THEN EntradaReal 
+                         ELSE DATEADD(DAY, -1, EntradaReal) END,
+                    DATEADD(DAY, CASE WHEN CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) < HoraInicioDescanso THEN 0 ELSE 1 END, 
+                           CAST(HoraInicioDescanso AS DATETIME)))/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
+            ELSE NULL
+        END AS Total1raJornada,
 
-    CLOSE curMarcaciones;
-    DEALLOCATE curMarcaciones;
+        -- Total 2da Jornada
+        CASE 
+            WHEN ReingresoDescanso IS NOT NULL THEN 
+                CAST(CAST(DATEDIFF(MINUTE, ReingresoDescanso, ISNULL(SalidaReal, '23:59:59'))/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
+            WHEN HoraFinDescanso IS NOT NULL THEN 
+                CAST(CAST(DATEDIFF(MINUTE, 
+                    CAST(HoraFinDescanso AS DATETIME),
+                    CASE WHEN CAST(ISNULL(SalidaReal, '23:59:59') AS TIME) > HoraFinDescanso 
+                         THEN SalidaReal 
+                         ELSE DATEADD(DAY, 1, SalidaReal) END)/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
+            ELSE NULL
+        END AS Total2daJornada,
 
-    -- Eliminar la tabla temporal
-    DROP TABLE #MarcacionesActualizadas;
+        -- Total trabajado
+        CASE
+            WHEN SalidaDescanso IS NOT NULL AND ReingresoDescanso IS NOT NULL THEN
+                CAST(CAST((DATEDIFF(MINUTE, EntradaReal, SalidaDescanso) + 
+                      DATEDIFF(MINUTE, ReingresoDescanso, SalidaReal))/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
+            WHEN HoraInicioDescanso IS NOT NULL AND HoraFinDescanso IS NOT NULL THEN
+                CAST(CAST((DATEDIFF(MINUTE, 
+                    CASE WHEN CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) < HoraInicioDescanso 
+                         THEN EntradaReal 
+                         ELSE DATEADD(DAY, -1, EntradaReal) END,
+                    DATEADD(DAY, CASE WHEN CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) < HoraInicioDescanso THEN 0 ELSE 1 END, 
+                           CAST(HoraInicioDescanso AS DATETIME))) +
+                      DATEDIFF(MINUTE, 
+                    CAST(HoraFinDescanso AS DATETIME),
+                    CASE WHEN CAST(ISNULL(SalidaReal, '23:59:59') AS TIME) > HoraFinDescanso 
+                         THEN SalidaReal 
+                         ELSE DATEADD(DAY, 1, SalidaReal) END))/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
+            ELSE
+                CAST(CAST(DATEDIFF(MINUTE, ISNULL(EntradaReal, '00:00:00'), ISNULL(SalidaReal, '23:59:59'))/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
+        END AS TotalTrabajado,
+
+        -- Sobretiempo (asumiendo 8 horas como jornada estándar)
+        CASE
+            WHEN SalidaDescanso IS NOT NULL AND ReingresoDescanso IS NOT NULL THEN
+                CASE WHEN (DATEDIFF(MINUTE, EntradaReal, SalidaDescanso) + 
+                          DATEDIFF(MINUTE, ReingresoDescanso, SalidaReal)) > 480 THEN
+                    CAST(CAST(((DATEDIFF(MINUTE, EntradaReal, SalidaDescanso) + 
+                           DATEDIFF(MINUTE, ReingresoDescanso, SalidaReal)) - 480)/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
+                ELSE '0 hrs' END
+            WHEN HoraInicioDescanso IS NOT NULL AND HoraFinDescanso IS NOT NULL THEN
+                CASE WHEN (DATEDIFF(MINUTE, 
+                    CASE WHEN CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) < HoraInicioDescanso 
+                         THEN EntradaReal 
+                         ELSE DATEADD(DAY, -1, EntradaReal) END,
+                    DATEADD(DAY, CASE WHEN CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) < HoraInicioDescanso THEN 0 ELSE 1 END, 
+                           CAST(HoraInicioDescanso AS DATETIME))) +
+                      DATEDIFF(MINUTE, 
+                    CAST(HoraFinDescanso AS DATETIME),
+                    CASE WHEN CAST(ISNULL(SalidaReal, '23:59:59') AS TIME) > HoraFinDescanso 
+                         THEN SalidaReal 
+                         ELSE DATEADD(DAY, 1, SalidaReal) END)) > 480 THEN
+                    CAST(CAST(((DATEDIFF(MINUTE, 
+                        CASE WHEN CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) < HoraInicioDescanso 
+                             THEN EntradaReal 
+                             ELSE DATEADD(DAY, -1, EntradaReal) END,
+                        DATEADD(DAY, CASE WHEN CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) < HoraInicioDescanso THEN 0 ELSE 1 END, 
+                               CAST(HoraInicioDescanso AS DATETIME))) +
+                          DATEDIFF(MINUTE, 
+                        CAST(HoraFinDescanso AS DATETIME),
+                        CASE WHEN CAST(ISNULL(SalidaReal, '23:59:59') AS TIME) > HoraFinDescanso 
+                             THEN SalidaReal 
+                             ELSE DATEADD(DAY, 1, SalidaReal) END)) - 480)/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
+                ELSE '0 hrs' END
+            ELSE
+                CASE WHEN DATEDIFF(MINUTE, ISNULL(EntradaReal, '00:00:00'), ISNULL(SalidaReal, '23:59:59')) > 480 THEN
+                    CAST(CAST((DATEDIFF(MINUTE, ISNULL(EntradaReal, '00:00:00'), ISNULL(SalidaReal, '23:59:59')) - 480)/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
+                ELSE '0 hrs' END
+        END AS Sobretiempo
+    FROM JornadasAgrupadas
+    WHERE EntradaReal IS NOT NULL AND SalidaReal IS NOT NULL;
+
+    -- Retornar resultados en el formato solicitado
+    SELECT
+        Fecha,
+        DiaSemana,
+        Cargo,
+        NombreTrabajador,
+        Cedula,
+        Jornada,
+        InicioJornada AS [1eraJornada.inicio],
+        InicioReceso AS [1eraJornada.inicioreceso],
+        Total1raJornada AS [1eraJornada.total],
+        FinReceso AS [2daJornada.finreceso],
+        FinJornada AS [2daJornada.final],
+        Total2daJornada AS [2daJornada.total],
+        TotalTrabajado AS [horas.TiempoTotalTrabajado],
+        Sobretiempo AS [horas.Sobretiempo]
+    FROM #Resultados
+    ORDER BY Fecha, NombreTrabajador;
+
+    DROP TABLE #Resultados;
 END;
-
 /* -------------------------------------------------- */
 /* -------------------------------------------------- */
 /* -------------------------------------------------- */
-
--- Script para reprocesar las programaciones de turnos existentes
--- y actualizar las marcaciones correctamente
-
--- 1. Primero, desactivamos temporalmente las programaciones existentes
--- (en vez de borrarlas, las desactivamos por seguridad)
-BEGIN TRANSACTION;
-
-BEGIN TRY
-    -- Crear tabla temporal para almacenar las programaciones actuales
-    CREATE TABLE #ProgramacionesParaReprocesar
-(
-    idProgramacion UNIQUEIDENTIFIER,
-    idUsuario UNIQUEIDENTIFIER,
-    idCentroTrabajo UNIQUEIDENTIFIER,
-    fechaInicio DATE,
-    fechaFin DATE,
-    idUsuarioRegistra UNIQUEIDENTIFIER,
-    fechaRegistro DATETIME
-);
-
-    -- Crear tabla temporal para almacenar los detalles por día de la semana
-    CREATE TABLE #DetallesPorDia
-(
-    idProgramacion UNIQUEIDENTIFIER,
-    diaSemana INT,
-    idTurno UNIQUEIDENTIFIER
-);
-
-    -- 2. Obtener todas las programaciones activas
-    INSERT INTO #ProgramacionesParaReprocesar
-SELECT
-    idProgramacion,
-    idUsuario,
-    idCentroTrabajo,
-    fechaInicio,
-    fechaFin,
-    idUsuarioRegistra,
-    fechaRegistro
-FROM ProgramacionTurnos
-WHERE activo = 1;
-
-    -- 3. Obtener los detalles de programación agrupados por día de la semana
-    INSERT INTO #DetallesPorDia
-SELECT DISTINCT
-    PD.idProgramacion,
-    DATEPART(WEEKDAY, PD.fechaInicio) AS diaSemana,
-    PD.idTurno
-FROM ProgramacionTurnosDetalle PD
-    INNER JOIN #ProgramacionesParaReprocesar PR ON PD.idProgramacion = PR.idProgramacion;
-
-    -- 4. Desactivar las programaciones actuales
-    UPDATE ProgramacionTurnos
-    SET activo = 0
-    WHERE idProgramacion IN (SELECT idProgramacion
-FROM #ProgramacionesParaReprocesar);
-
-    -- 5. Variables para el cursor
-    DECLARE @idProgramacion UNIQUEIDENTIFIER;
-    DECLARE @idUsuario UNIQUEIDENTIFIER;
-    DECLARE @idCentroTrabajo UNIQUEIDENTIFIER;
-    DECLARE @fechaInicio DATE;
-    DECLARE @fechaFin DATE;
-    DECLARE @idUsuarioRegistra UNIQUEIDENTIFIER;
-    DECLARE @idTurnoLunes UNIQUEIDENTIFIER;
-    DECLARE @idTurnoMartes UNIQUEIDENTIFIER;
-    DECLARE @idTurnoMiercoles UNIQUEIDENTIFIER;
-    DECLARE @idTurnoJueves UNIQUEIDENTIFIER;
-    DECLARE @idTurnoViernes UNIQUEIDENTIFIER;
-    DECLARE @idTurnoSabado UNIQUEIDENTIFIER;
-    DECLARE @idTurnoDomingo UNIQUEIDENTIFIER;
-    DECLARE @idTurnoDefault UNIQUEIDENTIFIER;
-
-    -- 6. Cursor para procesar cada programación
-    DECLARE curProgramaciones CURSOR FOR
-    SELECT
-    idProgramacion,
-    idUsuario,
-    idCentroTrabajo,
-    fechaInicio,
-    fechaFin,
-    idUsuarioRegistra
-FROM #ProgramacionesParaReprocesar;
-
-    OPEN curProgramaciones;
-    FETCH NEXT FROM curProgramaciones INTO 
-        @idProgramacion, @idUsuario, @idCentroTrabajo, @fechaInicio, @fechaFin, @idUsuarioRegistra;
-
-    WHILE @@FETCH_STATUS = 0
-    BEGIN
-    -- Inicializar variables de turnos
-    SET @idTurnoLunes = NULL;
-    SET @idTurnoMartes = NULL;
-    SET @idTurnoMiercoles = NULL;
-    SET @idTurnoJueves = NULL;
-    SET @idTurnoViernes = NULL;
-    SET @idTurnoSabado = NULL;
-    SET @idTurnoDomingo = NULL;
-    SET @idTurnoDefault = NULL;
-
-    -- Obtener los turnos para cada día de la semana
-    SELECT @idTurnoDomingo = idTurno
-    FROM #DetallesPorDia
-    WHERE idProgramacion = @idProgramacion AND diaSemana = 1;
-    SELECT @idTurnoLunes = idTurno
-    FROM #DetallesPorDia
-    WHERE idProgramacion = @idProgramacion AND diaSemana = 2;
-    SELECT @idTurnoMartes = idTurno
-    FROM #DetallesPorDia
-    WHERE idProgramacion = @idProgramacion AND diaSemana = 3;
-    SELECT @idTurnoMiercoles = idTurno
-    FROM #DetallesPorDia
-    WHERE idProgramacion = @idProgramacion AND diaSemana = 4;
-    SELECT @idTurnoJueves = idTurno
-    FROM #DetallesPorDia
-    WHERE idProgramacion = @idProgramacion AND diaSemana = 5;
-    SELECT @idTurnoViernes = idTurno
-    FROM #DetallesPorDia
-    WHERE idProgramacion = @idProgramacion AND diaSemana = 6;
-    SELECT @idTurnoSabado = idTurno
-    FROM #DetallesPorDia
-    WHERE idProgramacion = @idProgramacion AND diaSemana = 7;
-
-    -- Si hay un solo turno igual para todos los días, usarlo como default
-    IF (SELECT COUNT(DISTINCT idTurno)
-    FROM #DetallesPorDia
-    WHERE idProgramacion = @idProgramacion) = 1
-        BEGIN
-        SELECT TOP 1
-            @idTurnoDefault = idTurno
-        FROM #DetallesPorDia
-        WHERE idProgramacion = @idProgramacion;
-
-        -- Limpiar los valores individuales si usamos default
-        SET @idTurnoLunes = NULL;
-        SET @idTurnoMartes = NULL;
-        SET @idTurnoMiercoles = NULL;
-        SET @idTurnoJueves = NULL;
-        SET @idTurnoViernes = NULL;
-        SET @idTurnoSabado = NULL;
-        SET @idTurnoDomingo = NULL;
-    END
-
-    -- Llamar al procedimiento SAVE_ProgramacionTurnos
-    EXEC [dbo].[SAVE_ProgramacionTurnos]
-            @idUsuario = @idUsuario,
-            @idCentroTrabajo = @idCentroTrabajo,
-            @fechaInicio = @fechaInicio,
-            @fechaFin = @fechaFin,
-            @idUsuarioRegistra = @idUsuarioRegistra,
-            @idTurnoLunes = @idTurnoLunes,
-            @idTurnoMartes = @idTurnoMartes,
-            @idTurnoMiercoles = @idTurnoMiercoles,
-            @idTurnoJueves = @idTurnoJueves,
-            @idTurnoViernes = @idTurnoViernes,
-            @idTurnoSabado = @idTurnoSabado,
-            @idTurnoDomingo = @idTurnoDomingo,
-            @idTurnoDefault = @idTurnoDefault;
-
-    FETCH NEXT FROM curProgramaciones INTO 
-            @idProgramacion, @idUsuario, @idCentroTrabajo, @fechaInicio, @fechaFin, @idUsuarioRegistra;
-END
-
-    CLOSE curProgramaciones;
-    DEALLOCATE curProgramaciones;
-
-    -- 7. Opcional: Actualizar marcaciones de períodos anteriores que quedaron sin procesar
-    -- Esto actualizará las marcaciones históricas que no se procesaron correctamente la primera vez
-    DECLARE @fechaInicioHistorico DATE = '2024-02-01';  -- Ajustar según necesidad
-    DECLARE @fechaFinHistorico DATE = GETDATE();
-
-    -- Recorrer cada usuario y actualizar sus marcaciones históricas
-    DECLARE curUsuarios CURSOR FOR
-    SELECT DISTINCT idUsuario
-FROM ProgramacionTurnos
-WHERE activo = 1;
-
-    OPEN curUsuarios;
-    FETCH NEXT FROM curUsuarios INTO @idUsuario;
-
-    WHILE @@FETCH_STATUS = 0
-    BEGIN
-    EXEC [dbo].[ActualizarMarcacionesConTurnoAsignado] 
-            @idUsuario = @idUsuario, 
-            @fechaInicio = @fechaInicioHistorico, 
-            @fechaFin = @fechaFinHistorico;
-
-    FETCH NEXT FROM curUsuarios INTO @idUsuario;
-END
-
-    CLOSE curUsuarios;
-    DEALLOCATE curUsuarios;
-
-    -- 8. Limpieza de tablas temporales
-    DROP TABLE #ProgramacionesParaReprocesar;
-    DROP TABLE #DetallesPorDia;
-
-    COMMIT TRANSACTION;
-    
-    -- Informe final
-    PRINT 'Proceso completado exitosamente.';
-    
-    -- Mostrar estadísticas
-                SELECT
-        'Programaciones reprocesadas' AS Concepto,
-        COUNT(*) AS Cantidad
-    FROM ProgramacionTurnos
-    WHERE activo = 1
-
-UNION ALL
-
-    SELECT
-        'Marcaciones actualizadas' AS Concepto,
-        COUNT(*) AS Cantidad
-    FROM Bitacora
-    WHERE idProgramacionDetalle <> '00000000-0000-0000-0000-000000000001'
-        AND idTurno <> '00000000-0000-0000-0000-000000000001';
-
-END TRY
-BEGIN CATCH
-    IF @@TRANCOUNT > 0
-        ROLLBACK TRANSACTION;
-    
-    DECLARE @ErrorMessage NVARCHAR(4000);
-    DECLARE @ErrorSeverity INT;
-    DECLARE @ErrorState INT;
-
-    SELECT
-    @ErrorMessage = ERROR_MESSAGE(),
-    @ErrorSeverity = ERROR_SEVERITY(),
-    @ErrorState = ERROR_STATE();
-
-    RAISERROR (@ErrorMessage, @ErrorSeverity, @ErrorState);
-END CATCH;
-
--- Consulta para verificar los resultados
-/*
-SELECT 
-    U.NombreCompleto,
-    PT.fechaInicio,
-    PT.fechaFin,
-    COUNT(PTD.idProgramacionDetalle) as TotalDiasProgramados,
-    COUNT(DISTINCT B.idBitacora) as TotalMarcaciones,
-    SUM(CASE WHEN B.idProgramacionDetalle IS NOT NULL AND B.idProgramacionDetalle <> '00000000-0000-0000-0000-000000000001' THEN 1 ELSE 0 END) as MarcacionesConTurno
-FROM ProgramacionTurnos PT
-INNER JOIN UsuariosBiometrico U ON PT.idUsuario = U.idUsuario
-LEFT JOIN ProgramacionTurnosDetalle PTD ON PT.idProgramacion = PTD.idProgramacion
-LEFT JOIN Bitacora B ON U.Identificacion = B.Identificacion 
-    AND CAST(B.FechaHora AS DATE) BETWEEN PT.fechaInicio AND PT.fechaFin
-GROUP BY U.NombreCompleto, PT.fechaInicio, PT.fechaFin
-ORDER BY U.NombreCompleto, PT.fechaInicio;
-*/
