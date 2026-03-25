@@ -1,16 +1,16 @@
 <?php
 session_start();
-require_once '../../conectartraz.php';
+require_once dirname(__DIR__) . '/conectartraz.php';
 // require_once '../../conectar.php';
 
 // Usuario admin
-// $_SESSION['idUsuario'] = 'c9fa5447-4a96-4309-b6c3-4ffbbdee22fe'; // YUBER LOBO
+ $_SESSION['idUsuario'] = 'c9fa5447-4a96-4309-b6c3-4ffbbdee22fe'; // YUBER LOBO
 
 // Usuario de prueba
 // $_SESSION['idUsuario'] = '84db9cee-72aa-476a-a61b-fab16c5983af'; // INGRID VERONICA ACEVEDO CACERES
 
 //$_SESSION['idUsuario'] = 'E67D0C54-938B-421C-9D95-826E9AC4AD2C'; // JONATHAN BALAGUERA CARVAJALINO
-$_SESSION['idUsuario'] = 'd8c916d4-7b13-40a7-ad8c-38bae6f76429'; // EMERSON JIMENEZ
+//$_SESSION['idUsuario'] = 'd8c916d4-7b13-40a7-ad8c-38bae6f76429'; // EMERSON JIMENEZ
 
 // Permisos del sistema
 $_SESSION['permisos_todos'] = array(
@@ -35,82 +35,40 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
 
 <head>
     <title>JORNADA BITACORA</title>
-    <script src="../../libreria/jquery-3.3.1.min.js"></script>
-    <script src="../../libreria/jquery.min.js" type="text/javascript"></script>
-    <link rel="stylesheet" type="text/css" href="../../libreria/bootstrap/css/bootstrap.css">
-    <link rel="stylesheet" type="text/css" href="../../libreria/alertifyjs/css/alertify.css">
-    <link rel="stylesheet" type="text/css" href="../../libreria/alertifyjs/css/themes/bootstrap.css">
-    <script src="../../libreria/bootstrap/js/bootstrap.js"></script>
-    <script src="../../libreria/alertifyjs/alertify.js"></script>
-    <!--     <script src="../../libreria/moment.js" type="text/javascript"></script> -->
     <meta name="viewport" content="width=auto, initial-scale=0.8">
-    <link rel="icon" type="image/x-icon" href="../../../Logo.ico">
-    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.20/css/jquery.dataTables.css">
-    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.10.20/js/jquery.dataTables.js"></script>
-    <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
-    <script type="text/javascript" src="../controlador/jornada_bitacora.js"></script>
     <meta charset="UTF-8">
 
-    <link rel="stylesheet" href="../../css/multiple-select.css" />
-    <script src="../../js/multiple-select.js"></script>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+    <!-- AlertifyJS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/alertifyjs@1.13.1/build/css/alertify.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/alertifyjs@1.13.1/build/css/themes/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/alertifyjs@1.13.1/build/alertify.min.js"></script>
+
+    <!-- DataTables -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
 
-    <style>
-        body {
-            background-color: #f8f9fa;
-        }
+    <!-- SweetAlert -->
+    <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
 
-        .container {
-            background-color: #fff;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.65);
-            width: 80% !important;
+    <!-- Multiple Select -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/multiple-select@1.5.2/dist/multiple-select.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/multiple-select@1.5.2/dist/multiple-select.min.js"></script>
 
-        }
-
-        a {
-            font-size: 18px;
-
-        }
-
-        h2 {
-            text-align: center;
-            color: #337ab7;
-        }
-
-        label {
-            font-weight: bold;
-        }
-
-        .form-control {
-            margin-bottom: 10px;
-        }
-
-        #div_tabla_turnos {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        #div_tabla_turnos table {
-            margin: 0 auto;
-        }
-    </style>
-    <style type="text/css">
-        #empresa {
-            width: 200px;
-            border-bottom: black;
-
-        }
-    </style>
+    <!-- Controlador -->
+    <script type="text/javascript" src="../controlador/jornada_bitacora.js"></script>
 </head>
 
 <body>
@@ -143,7 +101,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                 if (isset($_SESSION['permisos_todos']['CONSULTAS_DE_TAREAS'])) {
                     echo '<li><a href="#" class="opciones" data-toggle="collapse" data-target="#idConsultar"><span class="glyphicon glyphicon-search" style="color: #5c80c0;"></span>Consulta</a>
                         <ul id="idConsultar" class="collapse">
-                         <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorCentroTrabajo"><span class="glyphicon glyphicon-tower" ></span>Por Centro de Trabajo</a><br>';
+                        <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorCentroTrabajo"><span class="glyphicon glyphicon-tower" ></span>Por Centro de Trabajo</a><br>';
                     if (isset($_SESSION['permisos_todos']['CONSULTAR TODOS'])) {
                         echo '
                         <a href="#" style="color:#55575D;text-decoration: none;" class="opciones" data-toggle="collapse" data-target="#idPorEmpresa"><span class="glyphicon glyphicon-folder-open"></span>Por Empresa</a><br>
@@ -530,7 +488,8 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     </div>
                     <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
                         <label>Duración:</label>
-                        <input class="form-control" type="time" id="Duracion_turno" readonly
+                        <!-- Código hecho por Mario — Mostrar la duración como texto plano sin AM/PM -->
+                        <input class="form-control" type="text" id="Duracion_turno" readonly
                             style="background-color: #f9f9f9;">
                     </div>
                 </div>
@@ -571,7 +530,8 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                             <div class="col-xs-12 col-sm-3 col-md-3 col-lg-3">
                                 <div class="form-group">
                                     <label>Duración Descanso:</label>
-                                    <input class="form-control" type="time" id="duracion_descanso" readonly
+                                    <!-- Código hecho por Mario — mostrar intervalos sin formato AM/PM -->
+                                    <input class="form-control" type="text" id="duracion_descanso" readonly
                                         style="background-color: #f5f5f5;">
                                 </div>
                             </div>
@@ -593,6 +553,19 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                             onclick="get_crear_turno()">
                             <i class="glyphicon glyphicon-time"></i> Crear Turno
                         </button>
+                        <button type="button" id="button_cancelar_edicion" class="btn btn-default"
+                            style="margin-left: 10px; display: none;" onclick="cancelarEdicionTurno()">
+                            Cancelar edición
+                        </button>
+                    </div>
+                </div>
+                <div id="turno_creado_warning" class="alert alert-warning" style="display:none; margin-top: 10px;">
+                    <p id="turno_creado_warning_text" style="margin-bottom: 5px;"></p>
+                    <div class="checkbox">
+                        <label>
+                            <input type="checkbox" id="confirmar_edicion_turno">
+                            Confirmo que entiendo que esta acción afectará cualquier asignación activa relacionada con este turno.
+                        </label>
                     </div>
                 </div>
 
@@ -678,10 +651,13 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
 
                 <div class="row">
                     <!-- <h3 class="col-xs-12">Registro Múltiple de Usuarios</h3> -->
+                    <!--
+                    // DESHABILITADO POR MARIO — se usan los filtros de columna en lugar de la barra de búsqueda global
                     <div class="col-xs-9 col-sm-10 col-md-10 col-lg-10">
                         <label for="buscar_usuarios">Buscar Usuarios:</label>
                         <input type="text" id="buscar_usuarios" class="form-control" placeholder="Buscar por nombre, cédula o cargo" onkeyup="get_Usuarios(this.value)">
                     </div>
+                    -->
                     <div class="col-xs-3 col-sm-2 col-md-2 col-lg-2" style="margin-top: 25px;">
                         <button type="button" class="btn btn-success" onclick="asignarTurnoMultiple()">
                             Asignar Turnos
@@ -691,16 +667,34 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
 
                 <div class="table-responsive" style="margin-top: 15px;">
                     <table class="table table-striped table-bordered table-hover">
-                        <thead>
-                            <tr>
-                                <th class="text-center" style="width: 40px;">
-                                    <input type="checkbox" id="seleccionar_todos" onclick="seleccionarTodos()">
-                                </th>
-                                <th class="text-center">Nombre</th>
-                                <th class="text-center">Cédula</th>
-                                <th class="text-center">Cargo</th>
-                            </tr>
-                        </thead>
+                <thead>
+                    <tr>
+                        <th class="text-center" style="width: 40px;">
+                            <input type="checkbox" id="seleccionar_todos" onclick="seleccionarTodos()">
+                        </th>
+                        <th class="text-center">Nombre</th>
+                        <th class="text-center">Cédula</th>
+                        <th class="text-center">Cargo</th>
+                        <th class="text-center">Empresa</th>
+                    </tr>
+                    <tr class="filters" id="filtros_usuarios">
+                        <th></th>
+                        <th>
+                            <input type="text" id="filter_nombre" class="form-control input-sm" placeholder="Filtrar nombre" />
+                        </th>
+                        <th>
+                            <input type="text" id="filter_cedula" class="form-control input-sm" placeholder="Filtrar cédula" />
+                        </th>
+                        <th>
+                            <input type="text" id="filter_cargo" class="form-control input-sm" placeholder="Filtrar cargo" />
+                        </th>
+                        <th>
+                            <select id="filter_empresa" class="form-control input-sm">
+                                <option value="">Todas</option>
+                            </select>
+                        </th>
+                    </tr>
+                </thead>
                         <tbody id="tabla_usuarios_multiple">
                             <!-- Los usuarios se cargarán aquí dinámicamente -->
                         </tbody>
@@ -780,7 +774,40 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                             </div>
                         </div>
 
-                        <!-- Aquí podrías añadir campos para editar los turnos específicos por día -->
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label for="edit_turnoTipo">Turno asignado:</label>
+                                    <select id="edit_turnoTipo" class="form-control"></select>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>Hora Inicio:</label>
+                                    <input type="text" id="edit_horaInicio" class="form-control" readonly>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label>Hora Fin:</label>
+                                    <input type="text" id="edit_horaFin" class="form-control" readonly>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div id="edit_validation_messages" class="text-danger" style="min-height: 24px;"></div>
+                                <p class="text-warning">
+                                    <small id="edit_warning_text">Este cambio afecta directamente al trabajador asignado.</small>
+                                </p>
+                                <div class="checkbox">
+                                    <label>
+                                        <input type="checkbox" id="edit_confirmar_cambios"> Confirmo que entiendo que estos cambios afectarán a los usuarios asignados.
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
                     </form>
                 </div>
                 <div class="modal-footer">

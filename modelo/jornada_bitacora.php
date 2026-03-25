@@ -1,8 +1,14 @@
 <?php
 // require_once '../../conectar.php';
-require_once '../../conectartraz.php';
-include("../../clase_encrip.php");
-include("../../flujos/funciones.php");
+require_once dirname(__DIR__) . '/conectartraz.php';
+require_once dirname(__DIR__) . '/clase_encrip.php';
+
+$funcionesExterna = dirname(dirname(__DIR__)) . '/flujos/funciones.php';
+if (file_exists($funcionesExterna)) {
+    require_once $funcionesExterna;
+} else {
+    require_once __DIR__ . '/funciones_local.php';
+}
 
 $post_data = file_get_contents('php://input');
 $list_record = json_decode($post_data, true);
@@ -10,7 +16,6 @@ $params = array();
 $options = array("Scrollable" => SQLSRV_CURSOR_KEYSET);
 $json = '';
 
-// Añade esta función de log al principio del archivo, justo después de incluir las librerías
 function log_debug($mensaje, $datos = null)
 {
     $archivo_log = __DIR__ . '/debug_reportes.log';
@@ -28,7 +33,6 @@ function log_debug($mensaje, $datos = null)
     $log_mensaje .= "\n" . str_repeat('-', 80) . "\n";
     file_put_contents($archivo_log, $log_mensaje, FILE_APPEND);
 }
-
 
 function respuestaExito($data, $message = 'Operación realizada correctamente')
 {
@@ -49,6 +53,94 @@ function respuestaError($message, $errors = null)
         $response['errors'] = $errors;
     }
     return json_encode($response);
+}
+
+function convertirMinutosHora($time)
+{
+    if (!$time) {
+        return 0;
+    }
+    $parts = explode(':', substr($time, 0, 5));
+    $horas = isset($parts[0]) ? intval($parts[0]) : 0;
+    $minutos = isset($parts[1]) ? intval($parts[1]) : 0;
+    return ($horas * 60) + $minutos;
+}
+
+function construirIntervaloHoras($inicio, $fin)
+{
+    $start = convertirMinutosHora($inicio);
+    $end = convertirMinutosHora($fin);
+    if ($end <= $start) {
+        $end += 24 * 60;
+    }
+    return array($start, $end);
+}
+
+function intervalosSolapan($intervaloA, $intervaloB)
+{
+    return max($intervaloA[0], $intervaloB[0]) < min($intervaloA[1], $intervaloB[1]);
+}
+
+/**
+Codigo hecho por mario
+Funcion: existeObjetoSql valida si una tabla, vista o procedimiento existe en
+la base local. Se usa para que el backend no falle cuando la instancia local
+todavia no tiene todos los objetos del ambiente original.
+**/
+function existeObjetoSql($conn, $nombre, $tipo = null)
+{
+    $sql = "SELECT 1 AS existe WHERE OBJECT_ID(?, ?) IS NOT NULL";
+    $params = array($nombre, $tipo);
+    $stmt = sqlsrv_query($conn, $sql, $params);
+
+    if ($stmt === false) {
+        return false;
+    }
+
+    return sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC) !== null;
+}
+
+/**
+Codigo hecho por mario
+Funcion: obtenerSqlFuenteUsuarios construye una fuente SQL compatible para
+consultar usuarios desde vistas nuevas o desde tablas base, segun lo que exista
+realmente en la base local.
+**/
+function obtenerSqlFuenteUsuarios($conn, $alias = 'U')
+{
+    if (existeObjetoSql($conn, 'dbo.vUsuariosAppBiometrico', 'V')) {
+        return "(SELECT idUsuario, NombreCompleto, Identificacion, Cargo FROM dbo.vUsuariosAppBiometrico) {$alias}";
+    }
+
+    $partes = array();
+
+    if (existeObjetoSql($conn, 'dbo.UsuariosDetalle', 'U')) {
+        if (existeObjetoSql($conn, 'dbo.Usuarios', 'U')) {
+            $partes[] = "SELECT ud.idUsuario, ud.NombreCompleto, ud.Identificacion, ud.Cargo
+                         FROM dbo.UsuariosDetalle ud
+                         INNER JOIN dbo.Usuarios u ON ud.idUsuario = u.idUsuario
+                         WHERE ISNULL(u.Habilitado, 1) = 1";
+        } else {
+            $partes[] = "SELECT ud.idUsuario, ud.NombreCompleto, ud.Identificacion, ud.Cargo
+                         FROM dbo.UsuariosDetalle ud";
+        }
+    }
+
+    if (existeObjetoSql($conn, 'dbo.UsuariosBiometrico', 'U')) {
+        $partes[] = "SELECT ub.idUsuario, ub.NombreCompleto, ub.Identificacion, ub.Cargo
+                     FROM dbo.UsuariosBiometrico ub
+                     WHERE ISNULL(ub.Habilitado, 1) = 1";
+    }
+
+    if (empty($partes)) {
+        return "(SELECT CAST(NULL AS UNIQUEIDENTIFIER) AS idUsuario,
+                        CAST(NULL AS VARCHAR(100)) AS NombreCompleto,
+                        CAST(NULL AS VARCHAR(20)) AS Identificacion,
+                        CAST(NULL AS VARCHAR(100)) AS Cargo
+                 WHERE 1 = 0) {$alias}";
+    }
+
+    return '(' . implode(' UNION ', $partes) . ") {$alias}";
 }
 
 
@@ -218,6 +310,12 @@ if (isset($_GET['band'])) {
     }
 
     if ($_GET['band'] == 'get_Usuarios') {
+        /**
+        Codigo hecho por mario
+        Funcion: get_Usuarios obtiene usuarios para asignacion de turnos usando
+        la vista nueva cuando existe y aplicando fallback a tablas base cuando
+        la base local aun no tiene vUsuariosCentroTrabajo.
+        **/
         try {
             // 1. Obtener parámetros
             $idUsuario = isset($list_record['idUsuario']) ? $list_record['idUsuario'] : '';
@@ -232,30 +330,77 @@ if (isset($_GET['band'])) {
                 return;
             }
 
-            // 4. Construir la consulta SQL base usando la vista
-            $sql = "SELECT TOP 10 
-                    v.idUsuario,
-                    v.NombreCompleto,
-                    v.Identificacion,
-                    v.Cargo,
-                    v.CentroTrabajo
-                FROM vUsuariosCentroTrabajo v
-                WHERE v.idCentroTrabajo IN (" . implode(',', array_fill(0, count($centrosTrabajo), '?')) . ")";
+            $usarVistaCentroTrabajo = existeObjetoSql($conn, 'dbo.vUsuariosCentroTrabajo', 'V');
+            $usarEmpresas = existeObjetoSql($conn, 'dbo.usuariosempresa', 'U') && existeObjetoSql($conn, 'dbo.proveedores', 'U');
+
+            if ($usarVistaCentroTrabajo) {
+                $sql = "SELECT TOP 10
+                        v.idUsuario,
+                        v.NombreCompleto,
+                        v.Identificacion,
+                        v.Cargo,
+                        v.CentroTrabajo,";
+
+                if ($usarEmpresas) {
+                    $sql .= "
+                        ISNULL(p.RazonSocial, '') AS Empresa
+                    FROM vUsuariosCentroTrabajo v
+                    LEFT JOIN (
+                        SELECT idUsuario, MIN(idEmpresa) AS idEmpresa
+                        FROM dbo.usuariosempresa
+                        GROUP BY idUsuario
+                    ) ue ON v.idUsuario = ue.idUsuario
+                    LEFT JOIN dbo.proveedores p ON ue.idEmpresa = p.idProveedor AND p.empresa = 1";
+                } else {
+                    $sql .= "
+                        '' AS Empresa
+                    FROM vUsuariosCentroTrabajo v";
+                }
+
+                $sql .= "
+                    WHERE v.idCentroTrabajo IN (" . implode(',', array_fill(0, count($centrosTrabajo), '?')) . ")";
+            } else {
+                $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'u');
+                $sql = "SELECT TOP 10
+                        u.idUsuario,
+                        u.NombreCompleto,
+                        u.Identificacion,
+                        u.Cargo,
+                        '' AS CentroTrabajo,";
+
+                if ($usarEmpresas) {
+                    $sql .= "
+                        ISNULL(p.RazonSocial, '') AS Empresa
+                    FROM {$fuenteUsuarios}
+                    LEFT JOIN (
+                        SELECT idUsuario, MIN(idEmpresa) AS idEmpresa
+                        FROM dbo.usuariosempresa
+                        GROUP BY idUsuario
+                    ) ue ON u.idUsuario = ue.idUsuario
+                    LEFT JOIN dbo.proveedores p ON ue.idEmpresa = p.idProveedor AND p.empresa = 1
+                    WHERE 1 = 1";
+                } else {
+                    $sql .= "
+                        '' AS Empresa
+                    FROM {$fuenteUsuarios}
+                    WHERE 1 = 1";
+                }
+            }
 
             // 5. Agregar filtros de búsqueda si se proporciona texto
             if (!empty($texto_busqueda)) {
                 $sql .= " AND (
-                v.NombreCompleto LIKE ? OR 
-                v.Identificacion LIKE ? OR 
-                v.Cargo LIKE ?
+                " . ($usarVistaCentroTrabajo ? "v" : "u") . ".NombreCompleto LIKE ? OR 
+                " . ($usarVistaCentroTrabajo ? "v" : "u") . ".Identificacion LIKE ? OR 
+                " . ($usarVistaCentroTrabajo ? "v" : "u") . ".Cargo LIKE ?
             )";
             }
 
             // 6. Ordenar resultados
-            $sql .= " ORDER BY v.NombreCompleto";
+            $sql .= $usarVistaCentroTrabajo ? " ORDER BY v.NombreCompleto" : " ORDER BY u.NombreCompleto";
 
             // 7. Preparar parámetros
-            $params = $centrosTrabajo;
+            $params = $usarVistaCentroTrabajo ? $centrosTrabajo : array();
             if (!empty($texto_busqueda)) {
                 $params = array_merge($params, [
                     '%' . $texto_busqueda . '%',
@@ -278,7 +423,8 @@ if (isset($_GET['band'])) {
                     'id' => ENCR::encript($row['idUsuario']),
                     'nombre' => utf8_encode($row['NombreCompleto']),
                     'cedula' => $row['Identificacion'],
-                    'cargo' => $row['Cargo']
+                    'cargo' => $row['Cargo'],
+                    'empresa' => utf8_encode($row['Empresa'] ?? '')
                 );
                 array_push($data, $registro);
             }
@@ -467,6 +613,76 @@ if (isset($_GET['band'])) {
         }
     }
 
+    /**
+    Codigo hecho por mario
+    Funcion: update_turno_definicion actualiza la definicion del turno y su
+    descanso para que el frontend reciba una respuesta JSON valida al editar.
+    **/
+    if ($_GET['band'] == 'update_turno_definicion') {
+        try {
+            $idTurno = isset($list_record['idTurno']) ? $list_record['idTurno'] : null;
+            $nombreTurno = isset($list_record['Nombre_turno']) ? trim($list_record['Nombre_turno']) : '';
+            $horaInicio = isset($list_record['FechaInicial_turno']) ? $list_record['FechaInicial_turno'] : null;
+            $horaFin = isset($list_record['FechaFinal_turno']) ? $list_record['FechaFinal_turno'] : null;
+            $duracion = isset($list_record['Duracion_turno']) ? $list_record['Duracion_turno'] : '00:00';
+            $incluirDescanso = !empty($list_record['incluirDescanso']);
+
+            if (!$idTurno || !$nombreTurno || !$horaInicio || !$horaFin) {
+                $json = respuestaError('Datos incompletos para actualizar el turno');
+                return;
+            }
+
+            $partes = explode(':', $duracion);
+            $horas = isset($partes[0]) ? intval($partes[0]) : 0;
+            $minutos = isset($partes[1]) ? intval($partes[1]) : 0;
+            $duracionHoras = round($horas + ($minutos / 60), 2);
+
+            $sql = "UPDATE Turnos
+                    SET descripcion = ?, horaInicio = ?, horaFin = ?, duracionHoras = ?
+                    WHERE idTurno = ?";
+            $stmt = sqlsrv_query($conn, $sql, array($nombreTurno, $horaInicio, $horaFin, $duracionHoras, $idTurno));
+
+            if ($stmt === false) {
+                throw new Exception(print_r(sqlsrv_errors(), true));
+            }
+
+            sqlsrv_query($conn, "DELETE FROM TurnosDescansos WHERE idTurno = ?", array($idTurno));
+
+            if ($incluirDescanso) {
+                $inicioDescanso = isset($list_record['inicioDescanso']) ? $list_record['inicioDescanso'] : null;
+                $finDescanso = isset($list_record['finDescanso']) ? $list_record['finDescanso'] : null;
+                $duracionDescanso = isset($list_record['duracionDescanso']) ? $list_record['duracionDescanso'] : '00:00';
+                $descripcionDescanso = isset($list_record['descripcionDescanso']) ? $list_record['descripcionDescanso'] : null;
+
+                $partesDescanso = explode(':', $duracionDescanso);
+                $horasDescanso = isset($partesDescanso[0]) ? intval($partesDescanso[0]) : 0;
+                $minutosDescanso = isset($partesDescanso[1]) ? intval($partesDescanso[1]) : 0;
+                $duracionDescansoMinutos = ($horasDescanso * 60) + $minutosDescanso;
+
+                $sqlDescanso = "INSERT INTO TurnosDescansos
+                                (idTurnoDescanso, idTurno, horaInicio, horaFin, duracionMinutos, descripcion, activo)
+                                VALUES (NEWID(), ?, ?, ?, ?, ?, 1)";
+                $stmtDescanso = sqlsrv_query($conn, $sqlDescanso, array(
+                    $idTurno,
+                    $inicioDescanso,
+                    $finDescanso,
+                    $duracionDescansoMinutos,
+                    $descripcionDescanso
+                ));
+
+                if ($stmtDescanso === false) {
+                    throw new Exception(print_r(sqlsrv_errors(), true));
+                }
+            }
+
+            $json = respuestaExito(array('idTurno' => $idTurno), 'Turno actualizado correctamente');
+        } catch (Exception $e) {
+            $json = respuestaError('Error al actualizar el turno: ' . $e->getMessage());
+        }
+    }
+
+
+
     if ($_GET['band'] == 'cargar_turnos') {
         $sql = "SELECT * FROM  turnos";
         $res = sqlsrv_query($conn, $sql);
@@ -547,6 +763,79 @@ if (isset($_GET['band'])) {
         } catch (Exception $e) {
             log_debug("Error en cargar_turnos", array('error' => $e->getMessage()));
             $json = respuestaError('Error al cargar turnos: ' . $e->getMessage());
+        }
+    }
+
+    if ($_GET['band'] == 'get_turnos_asignados') {
+        /**
+        Codigo hecho por mario
+        Funcion: get_turnos_asignados lista las programaciones activas por centro
+        de trabajo y usa una fuente flexible de usuarios para evitar errores por
+        ausencia de vUsuariosAppBiometrico en local.
+        **/
+        try {
+            $idUsuario = isset($list_record['idUsuario']) ? $list_record['idUsuario'] : '';
+            $centrosTrabajo = FUNCIONES::BuscarpermisoDetalle($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
+
+            if (empty($centrosTrabajo)) {
+                $json = respuestaError('Usuario no tiene centros de trabajo asignados');
+                return;
+            }
+
+            $placeholders = implode(',', array_fill(0, count($centrosTrabajo), '?'));
+            $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'VU');
+            $sql = "SELECT
+                    PT.idProgramacion,
+                    VU.NombreCompleto AS nombre,
+                    VU.Identificacion AS cedula,
+                    VU.Cargo AS cargo,
+                    CONVERT(VARCHAR(10), MIN(PTD.fechaInicio), 23) AS fechaInicio,
+                    CONVERT(VARCHAR(10), MAX(PTD.fechaFin), 23) AS fechaFin,
+                    CONVERT(VARCHAR(5), T.horaInicio, 108) AS horaInicio,
+                    CONVERT(VARCHAR(5), T.horaFin, 108) AS horaFin,
+                    RIGHT('00' + CAST(FLOOR(T.duracionHoras) AS VARCHAR(10)), 2) + ':' +
+                    RIGHT('00' + CAST(CAST(ROUND((T.duracionHoras - FLOOR(T.duracionHoras)) * 60, 0) AS INT) AS VARCHAR(10)), 2) AS duracion
+                FROM ProgramacionTurnos PT
+                INNER JOIN ProgramacionTurnosDetalle PTD ON PT.idProgramacion = PTD.idProgramacion
+                INNER JOIN Turnos T ON PTD.idTurno = T.idTurno
+                INNER JOIN {$fuenteUsuarios} ON PT.idUsuario = VU.idUsuario
+                WHERE PT.activo = 1
+                  AND PT.idCentroTrabajo IN ($placeholders)
+                GROUP BY
+                    PT.idProgramacion,
+                    VU.NombreCompleto,
+                    VU.Identificacion,
+                    VU.Cargo,
+                    T.horaInicio,
+                    T.horaFin,
+                    T.duracionHoras
+                ORDER BY VU.NombreCompleto, MIN(PTD.fechaInicio)";
+
+            $stmt = sqlsrv_query($conn, $sql, $centrosTrabajo);
+
+            if ($stmt === false) {
+                $errors = sqlsrv_errors();
+                throw new Exception($errors[0]['message']);
+            }
+
+            $turnos = array();
+            while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                $turnos[] = array(
+                    'nombre' => utf8_encode($row['nombre']),
+                    'cedula' => $row['cedula'],
+                    'cargo' => utf8_encode($row['cargo'] ?? ''),
+                    'fechaInicio' => $row['fechaInicio'],
+                    'fechaFin' => $row['fechaFin'],
+                    'horaInicio' => $row['horaInicio'],
+                    'horaFin' => $row['horaFin'],
+                    'duracion' => $row['duracion'],
+                    'idProgramacion' => ENCR::encript($row['idProgramacion'])
+                );
+            }
+
+            $json = respuestaExito($turnos, 'Turnos asignados obtenidos correctamente');
+        } catch (Exception $e) {
+            $json = respuestaError('Error al consultar los turnos asignados: ' . $e->getMessage());
         }
     }
 
@@ -721,80 +1010,14 @@ if (isset($_GET['band'])) {
         }
     }
 
-    if ($_GET['band'] == 'get_turnos_asignados') {
-        try {
-            $idUsuario = isset($list_record['idUsuario']) ? $list_record['idUsuario'] : '';
-
-            // Obtener array de centros de trabajo permitidos
-            $centrosTrabajo = FUNCIONES::BuscarpermisoDetalle($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
-
-            // Si no hay centros de trabajo asignados, retornar error
-            if (empty($centrosTrabajo)) {
-                $json = respuestaError('Usuario no tiene centros de trabajo asignados');
-                return;
-            }
-
-            // Modificar la consulta para incluir múltiples centros de trabajo
-            $sql = "SELECT 
-            NombreCompleto AS nombre, 
-            Identificacion AS cedula, 
-            Cargo AS cargo, 
-            FORMAT(fechaInicio, 'dd/MM/yyyy') AS fechaInicio, 
-            FORMAT(fechaFin, 'dd/MM/yyyy') AS fechaFin,
-            horaInicio, 
-            horaFin, 
-            duracion,
-            idProgramacion
-        FROM  vAsignacionTurnosUsuario
-        WHERE idCentroTrabajo IN (" . implode(',', array_fill(0, count($centrosTrabajo), '?')) . ")
-        GROUP BY
-            NombreCompleto,
-            Identificacion,
-            Cargo,
-            fechaInicio,
-            fechaFin,
-            horaInicio,
-            horaFin,
-            duracion,
-            idProgramacion
-        ORDER BY 
-            NombreCompleto, 
-            fechaInicio";
-
-            // Preparar los parámetros con los IDs de centros de trabajo
-            $params = $centrosTrabajo;
-            $stmt = sqlsrv_query($conn, $sql, $params);
-
-            if ($stmt === false) {
-                $errors = sqlsrv_errors();
-                $json = respuestaError('Error al ejecutar la consulta: ' . $errors[0]['message']);
-            } else {
-                $turnos = array();
-                while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-                    $turnos[] = array(
-                        'nombre' => utf8_encode($row['nombre']),
-                        'cedula' => $row['cedula'],
-                        'cargo' => $row['cargo'],
-                        'fechaInicio' => $row['fechaInicio'],
-                        'fechaFin' => $row['fechaFin'],
-                        'horaInicio' => $row['horaInicio'],
-                        'horaFin' => $row['horaFin'],
-                        'duracion' => $row['duracion'],
-                        'idProgramacion' => ENCR::encript($row['idProgramacion'])
-                    );
-                }
-
-                $json = respuestaExito(
-                    $turnos,
-                    'Turnos asignados obtenidos correctamente'
-                );
-            }
-        } catch (Exception $e) {
-            $json = respuestaError('Error al procesar la consulta de turnos: ' . $e->getMessage());
-        }
-    }
 
     if ($_GET['band'] == 'get_programacion_turno') {
+        /**
+        Codigo hecho por mario
+        Funcion: get_programacion_turno recupera el detalle de una programacion
+        de turnos para el modal de edicion con compatibilidad entre vistas nuevas
+        y tablas base locales.
+        **/
         try {
             // Obtener ID de la programación
             $idProgramacion = isset($list_record['idProgramacion']) ? ENCR::descript($list_record['idProgramacion']) : null;
@@ -803,6 +1026,7 @@ if (isset($_GET['band'])) {
                 $json = respuestaError('ID de programación no proporcionado o inválido');
             } else {
                 // Obtener datos completos de la programación
+                $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'VU');
                 $sql = "SELECT 
                 PT.idProgramacion,
                 PT.idUsuario,
@@ -814,7 +1038,7 @@ if (isset($_GET['band'])) {
                 D.Descripcion AS centroDeTrabajo
             FROM 
                 ProgramacionTurnos PT
-                INNER JOIN vUsuariosAppBiometrico VU ON PT.idUsuario = VU.idUsuario
+                INNER JOIN {$fuenteUsuarios} ON PT.idUsuario = VU.idUsuario
                 INNER JOIN Destino D ON PT.idCentroTrabajo = D.idDestino
             WHERE 
                 PT.idProgramacion = ?";
@@ -828,7 +1052,7 @@ if (isset($_GET['band'])) {
                     if ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
                         // Obtener los turnos asignados por día
                         $sqlTurnos = "SELECT 
-                        PTD.fecha, 
+                        PTD.fechaInicio AS fecha, 
                         T.idTurno,
                         T.descripcion,
                         T.horaInicio,
@@ -840,7 +1064,7 @@ if (isset($_GET['band'])) {
                     WHERE 
                         PTD.idProgramacion = ?
                     ORDER BY 
-                        PTD.fecha";
+                        PTD.fechaInicio";
 
                         $stmtTurnos = sqlsrv_query($conn, $sqlTurnos, array($idProgramacion));
 
@@ -853,6 +1077,7 @@ if (isset($_GET['band'])) {
                                 $detallesTurno[] = array(
                                     'fecha' => $rowTurno['fecha']->format('Y-m-d'),
                                     'idTurno' => ENCR::encript($rowTurno['idTurno']),
+                                    'idTurnoRaw' => $rowTurno['idTurno'],
                                     'descripcion' => $rowTurno['descripcion'],
                                     'horaInicio' => $rowTurno['horaInicio']->format('H:i:s'),
                                     'horaFin' => $rowTurno['horaFin']->format('H:i:s'),
@@ -889,80 +1114,519 @@ if (isset($_GET['band'])) {
 
     if ($_GET['band'] == 'delete_programacion_turno') {
         try {
-            // Obtener ID de la programación
             $idProgramacion = isset($list_record['idProgramacion']) ? ENCR::descript($list_record['idProgramacion']) : null;
 
             if (!$idProgramacion) {
                 $json = respuestaError('ID de programación no proporcionado o inválido');
-            } else {
-                // Primero eliminar los detalles (por integridad referencial)
-                $sqlDetalles = "DELETE FROM ProgramacionTurnosDetalle WHERE idProgramacion = ?";
-                $stmtDetalles = sqlsrv_query($conn, $sqlDetalles, array($idProgramacion));
-
-                if ($stmtDetalles === false) {
-                    $errors = sqlsrv_errors();
-                    $json = respuestaError('Error al eliminar los detalles: ' . $errors[0]['message']);
-                } else {
-                    // Luego eliminar la programación principal
-                    $sqlProgramacion = "DELETE FROM ProgramacionTurnos WHERE idProgramacion = ?";
-                    $stmtProgramacion = sqlsrv_query($conn, $sqlProgramacion, array($idProgramacion));
-
-                    if ($stmtProgramacion === false) {
-                        $errors = sqlsrv_errors();
-                        $json = respuestaError('Error al eliminar la programación: ' . $errors[0]['message']);
-                    } else {
-                        $json = respuestaExito(
-                            array('idProgramacion' => ENCR::encript($idProgramacion)),
-                            'Programación de turno eliminada correctamente'
-                        );
-                    }
-                }
+                return;
             }
+
+            $sqlProg = "SELECT fechaInicio, fechaFin FROM ProgramacionTurnos WHERE idProgramacion = ?";
+            $stmtProg = sqlsrv_query($conn, $sqlProg, array($idProgramacion));
+            if ($stmtProg === false) {
+                $errors = sqlsrv_errors();
+                throw new Exception($errors[0]['message']);
+            }
+
+            $fechaInicio = null;
+            $fechaFin = null;
+            if ($rowProg = sqlsrv_fetch_array($stmtProg, SQLSRV_FETCH_ASSOC)) {
+                $fechaInicio = $rowProg['fechaInicio'];
+                $fechaFin = $rowProg['fechaFin'];
+            }
+
+            $today = new DateTime();
+            $today->setTime(0, 0, 0);
+            $fechaInicioObj = ($fechaInicio instanceof DateTime) ? clone $fechaInicio : new DateTime(date_format($fechaInicio, 'Y-m-d'));
+            $fechaFinObj = ($fechaFin instanceof DateTime) ? clone $fechaFin : new DateTime(date_format($fechaFin, 'Y-m-d'));
+
+            if ($fechaInicioObj <= $today && $today <= $fechaFinObj) {
+                $json = respuestaError('No se puede eliminar una programación en curso o activa.');
+                return;
+            }
+
+            $sqlBitacora = "SELECT COUNT(1) as total FROM Bitacora B INNER JOIN ProgramacionTurnosDetalle PD ON B.idProgramacionDetalle = PD.idProgramacionDetalle WHERE PD.idProgramacion = ?";
+            $stmtBitacora = sqlsrv_query($conn, $sqlBitacora, array($idProgramacion));
+            $bitacoraCount = 0;
+            if ($stmtBitacora !== false && $rowBitacora = sqlsrv_fetch_array($stmtBitacora, SQLSRV_FETCH_ASSOC)) {
+                $bitacoraCount = $rowBitacora['total'];
+            }
+
+            if ($bitacoraCount > 0) {
+                $json = respuestaError('No se puede eliminar la programación porque tiene marcaciones registradas.');
+                return;
+            }
+
+            $sqlDetalles = "DELETE FROM ProgramacionTurnosDetalle WHERE idProgramacion = ?";
+            $stmtDetalles = sqlsrv_query($conn, $sqlDetalles, array($idProgramacion));
+
+            if ($stmtDetalles === false) {
+                $errors = sqlsrv_errors();
+                $json = respuestaError('Error al eliminar los detalles: ' . $errors[0]['message']);
+                return;
+            }
+
+            $sqlProgramacion = "DELETE FROM ProgramacionTurnos WHERE idProgramacion = ?";
+            $stmtProgramacion = sqlsrv_query($conn, $sqlProgramacion, array($idProgramacion));
+
+            if ($stmtProgramacion === false) {
+                $errors = sqlsrv_errors();
+                $json = respuestaError('Error al eliminar la programación: ' . $errors[0]['message']);
+                return;
+            }
+
+            $json = respuestaExito(
+                array('idProgramacion' => ENCR::encript($idProgramacion)),
+                'Programación de turno eliminada correctamente'
+            );
         } catch (Exception $e) {
             $json = respuestaError('Error al procesar la eliminación: ' . $e->getMessage());
         }
     }
 
-    if ($_GET['band'] == 'update_programacion_turno') {
+    if ($_GET['band'] == 'validate_delete_turno_definicion') {
+        /**
+        Codigo hecho por mario
+        Funcion: validate_delete_turno_definicion revisa uso historico y
+        asignaciones activas antes de eliminar o editar un turno definido.
+        **/
         try {
-            // Obtener datos de la programación a actualizar
+            $idTurno = isset($list_record['idTurno']) ? $list_record['idTurno'] : null;
+
+            if (!$idTurno) {
+                $json = respuestaError('ID de turno inválido');
+                return;
+            }
+
+            $sqlTurno = "SELECT descripcion FROM turnos WHERE idTurno = ? AND activo = 1";
+            $stmtTurno = sqlsrv_query($conn, $sqlTurno, array($idTurno));
+            if ($stmtTurno === false) {
+                $errors = sqlsrv_errors();
+                throw new Exception($errors[0]['message']);
+            }
+            if (!$turnoData = sqlsrv_fetch_array($stmtTurno, SQLSRV_FETCH_ASSOC)) {
+                $json = respuestaError('Turno no encontrado o inactivo');
+                return;
+            }
+
+            $today = new DateTime();
+            $today->setTime(0, 0, 0);
+            $assignedUsers = array();
+            $futureCoverage = array();
+            $hasPastUsage = false;
+            $warnings = array();
+            $hardBlock = false;
+            $hardMessage = '';
+
+            $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'VU');
+            $sqlAsignaciones = "SELECT DISTINCT
+                    PT.idProgramacion,
+                    PT.fechaInicio,
+                    PT.fechaFin,
+                    PT.activo,
+                    PT.idCentroTrabajo,
+                    D.Descripcion AS centroTrabajo,
+                    VU.NombreCompleto
+                FROM ProgramacionTurnosDetalle PD
+                INNER JOIN ProgramacionTurnos PT ON PD.idProgramacion = PT.idProgramacion
+                INNER JOIN Destino D ON PT.idCentroTrabajo = D.idDestino
+                INNER JOIN {$fuenteUsuarios} ON PT.idUsuario = VU.idUsuario
+                WHERE PD.idTurno = ?";
+            $stmtAsignaciones = sqlsrv_query($conn, $sqlAsignaciones, array($idTurno));
+            if ($stmtAsignaciones === false) {
+                $errors = sqlsrv_errors();
+                throw new Exception($errors[0]['message']);
+            }
+
+            while ($rowAsignacion = sqlsrv_fetch_array($stmtAsignaciones, SQLSRV_FETCH_ASSOC)) {
+                $nombre = utf8_encode($rowAsignacion['NombreCompleto']);
+                if (!in_array($nombre, $assignedUsers)) {
+                    $assignedUsers[] = $nombre;
+                }
+
+                $centroTrabajo = utf8_encode($rowAsignacion['centroTrabajo']);
+                $fechaInicioObj = ($rowAsignacion['fechaInicio'] instanceof DateTime) ? clone $rowAsignacion['fechaInicio'] : new DateTime(date_format($rowAsignacion['fechaInicio'], 'Y-m-d'));
+                $fechaFinObj = ($rowAsignacion['fechaFin'] instanceof DateTime) ? clone $rowAsignacion['fechaFin'] : new DateTime(date_format($rowAsignacion['fechaFin'], 'Y-m-d'));
+
+                if ($rowAsignacion['activo'] == 1 && $fechaFinObj >= $today) {
+                    $hardBlock = true;
+                    $hardMessage = "El turno está asignado a {$nombre} en {$centroTrabajo} hasta el {$fechaFinObj->format('Y-m-d')}.";
+                }
+
+                if ($fechaFinObj < $today) {
+                    $hasPastUsage = true;
+                }
+
+                if ($fechaFinObj >= $today) {
+                    $futureCoverage[] = "{$centroTrabajo} ({$fechaInicioObj->format('Y-m-d')} - {$fechaFinObj->format('Y-m-d')})";
+                }
+            }
+
+            if (!$hardBlock && $hasPastUsage) {
+                $warnings[] = 'Este turno tiene historial de uso en el pasado. Eliminarlo quitará su referencia histórica.';
+            }
+
+            if (!$hardBlock && !empty($futureCoverage)) {
+                $warningCoverage = implode(', ', array_unique($futureCoverage));
+                $warnings[] = "Eliminar este turno afectará la cobertura en: {$warningCoverage}.";
+            }
+
+            if (empty($warnings)) {
+                $softMessage = 'No se detectaron advertencias adicionales.';
+            } else {
+                $softMessage = 'Se detectaron advertencias adicionales antes de eliminar.';
+            }
+
+            $json = respuestaExito(
+                array(
+                    'hardBlock' => $hardBlock,
+                    'hardMessage' => $hardMessage,
+                    'warnings' => $warnings,
+                    'softMessage' => $softMessage,
+                    'assignedUsers' => $assignedUsers,
+                    'turnoDescripcion' => utf8_encode($turnoData['descripcion'])
+                ),
+                'Validación completada'
+            );
+        } catch (Exception $e) {
+            $json = respuestaError('Error al validar la eliminación del turno: ' . $e->getMessage());
+        }
+    }
+
+    if ($_GET['band'] == 'update_programacion_turno') {
+        /**
+        Codigo hecho por mario
+        Funcion: update_programacion_turno actualiza fechas, centro y turno de
+        una programacion, recalculando el detalle diario segun el esquema local.
+        **/
+        try {
             $idProgramacion = isset($list_record['idProgramacion']) ? ENCR::descript($list_record['idProgramacion']) : null;
             $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? ENCR::descript($list_record['idCentroTrabajo']) : null;
             $fechaInicio = isset($list_record['fechaInicio']) ? $list_record['fechaInicio'] : null;
             $fechaFin = isset($list_record['fechaFin']) ? $list_record['fechaFin'] : null;
-            $activo = isset($list_record['activo']) ? $list_record['activo'] : 1;
-            $idUsuarioRegistra = isset($list_record['idUsuarioRegistra']) ? $list_record['idUsuarioRegistra'] : '22954799-f18d-4b80-aae2-6868cf053354';
+            $idTurno = isset($list_record['idTurno']) ? $list_record['idTurno'] : null;
 
+            $fieldErrors = array();
             if (!$idProgramacion) {
-                $json = respuestaError('ID de programación no proporcionado o inválido');
-            } else {
-                // Actualizar la programación principal
-                $sqlUpdate = "UPDATE ProgramacionTurnos 
-                SET fechaInicio = ?, 
-                    fechaFin = ?, 
-                    activo = ?,
-                    idCentroTrabajo = ?
-                WHERE idProgramacion = ?";
+                $fieldErrors['idProgramacion'] = 'Programación no válida';
+            }
+            if (!$idCentroTrabajo) {
+                $fieldErrors['idCentroTrabajo'] = 'Seleccione un centro de trabajo válido';
+            }
+            if (!$fechaInicio) {
+                $fieldErrors['fechaInicio'] = 'La fecha de inicio es obligatoria';
+            }
+            if (!$fechaFin) {
+                $fieldErrors['fechaFin'] = 'La fecha de fin es obligatoria';
+            }
+            if (!$idTurno) {
+                $fieldErrors['idTurno'] = 'Seleccione el turno a aplicar';
+            }
+            if (!$idProgramacion || !$idCentroTrabajo || !$fechaInicio || !$fechaFin || !$idTurno) {
+                $json = respuestaError(
+                    'Debe completar los campos obligatorios para actualizar la programación',
+                    array('fieldErrors' => $fieldErrors)
+                );
+                return;
+            }
 
-                $params = array($fechaInicio, $fechaFin, $activo, $idCentroTrabajo, $idProgramacion);
-                $stmtUpdate = sqlsrv_query($conn, $sqlUpdate, $params);
+            $fechaInicioObj = new DateTime($fechaInicio);
+            $fechaFinObj = new DateTime($fechaFin);
+            $today = new DateTime();
+            $today->setTime(0, 0, 0);
 
-                if ($stmtUpdate === false) {
-                    $errors = sqlsrv_errors();
-                    $json = respuestaError('Error al actualizar la programación: ' . $errors[0]['message']);
-                } else {
-                    // La actualización de detalles es más compleja y dependerá de tu lógica específica
-                    // Podrías eliminar todos los detalles existentes y crear nuevos, o actualizar los existentes
-                    // Por ahora, solo devolvemos éxito en la actualización principal
+            if ($fechaInicioObj > $fechaFinObj) {
+                $json = respuestaError(
+                    'La fecha de inicio no puede ser posterior a la fecha de fin',
+                    array(
+                        'fieldErrors' => array(
+                            'fechaInicio' => 'La fecha de inicio debe ser igual o anterior a la fecha de fin',
+                            'fechaFin' => 'La fecha de fin debe ser igual o posterior a la fecha de inicio'
+                        )
+                    )
+                );
+                return;
+            }
 
-                    $json = respuestaExito(
-                        array('idProgramacion' => ENCR::encript($idProgramacion)),
-                        'Programación de turno actualizada correctamente'
+            if ($fechaInicioObj < $today) {
+                $json = respuestaError(
+                    'La fecha de inicio no puede ser anterior a la fecha actual',
+                    array(
+                        'fieldErrors' => array(
+                            'fechaInicio' => 'Seleccione una fecha igual o posterior a hoy'
+                        )
+                    )
+                );
+                return;
+            }
+
+            $sqlCentro = "SELECT TOP 1 * FROM Destino WHERE idDestino = ?";
+            $stmtCentro = sqlsrv_query($conn, $sqlCentro, array($idCentroTrabajo));
+            if ($stmtCentro === false) {
+                $errors = sqlsrv_errors();
+                throw new Exception($errors[0]['message']);
+            }
+
+            $centroValido = false;
+            if ($rowCentro = sqlsrv_fetch_array($stmtCentro, SQLSRV_FETCH_ASSOC)) {
+                $activoCentro = isset($rowCentro['Activo']) ? $rowCentro['Activo'] : 1;
+                $centroValido = ($activoCentro == 1 || $activoCentro === null);
+            }
+            if (!$centroValido) {
+                $json = respuestaError(
+                    'Centro de trabajo inexistente o inactivo',
+                    array('fieldErrors' => array('idCentroTrabajo' => 'El centro de trabajo seleccionado no está activo'))
+                );
+                return;
+            }
+
+            $sqlTurno = "SELECT horaInicio, horaFin FROM turnos WHERE idTurno = ? AND activo = 1";
+            $stmtTurno = sqlsrv_query($conn, $sqlTurno, array($idTurno));
+            if ($stmtTurno === false) {
+                $errors = sqlsrv_errors();
+                throw new Exception($errors[0]['message']);
+            }
+            if (!$turnoRow = sqlsrv_fetch_array($stmtTurno, SQLSRV_FETCH_ASSOC)) {
+                $json = respuestaError(
+                    'Turno seleccionado no existe o está inactivo',
+                    array('fieldErrors' => array('idTurno' => 'Seleccione un turno activo'))
+                );
+                return;
+            }
+
+            $intervaloNuevo = construirIntervaloHoras($turnoRow['horaInicio']->format('H:i:s'), $turnoRow['horaFin']->format('H:i:s'));
+            $duracionMinutosNuevo = $intervaloNuevo[1] - $intervaloNuevo[0];
+            if ($duracionMinutosNuevo > 24 * 60) {
+                $json = respuestaError(
+                    'La duración del turno no puede superar las 24 horas',
+                    array('fieldErrors' => array('duracion' => 'El turno debe durar 24 horas como máximo'))
+                );
+                return;
+            }
+
+            $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'V');
+            $sqlConflicto = "SELECT PTD.fechaInicio AS fecha, T.descripcion, T.horaInicio, T.horaFin, V.NombreCompleto
+                FROM ProgramacionTurnosDetalle PTD
+                INNER JOIN ProgramacionTurnos PT ON PTD.idProgramacion = PT.idProgramacion
+                INNER JOIN Turnos T ON PTD.idTurno = T.idTurno
+                INNER JOIN {$fuenteUsuarios} ON PT.idUsuario = V.idUsuario
+                WHERE PT.idCentroTrabajo = ? AND PT.activo = 1 AND PT.idProgramacion <> ? AND PTD.fechaInicio BETWEEN ? AND ?";
+            $stmtConflicto = sqlsrv_query($conn, $sqlConflicto, array($idCentroTrabajo, $idProgramacion, $fechaInicioObj->format('Y-m-d'), $fechaFinObj->format('Y-m-d')));
+
+            if ($stmtConflicto === false) {
+                $errors = sqlsrv_errors();
+                throw new Exception($errors[0]['message']);
+            }
+
+            while ($rowConflicto = sqlsrv_fetch_array($stmtConflicto, SQLSRV_FETCH_ASSOC)) {
+                $intervaloExistente = construirIntervaloHoras($rowConflicto['horaInicio']->format('H:i:s'), $rowConflicto['horaFin']->format('H:i:s'));
+                if (intervalosSolapan($intervaloNuevo, $intervaloExistente)) {
+                    $fechaConflicto = $rowConflicto['fecha']->format('Y-m-d');
+                    $mensaje = "Existe una programación en el mismo centro (" . $rowConflicto['NombreCompleto'] . ") para el " . $fechaConflicto . " que solapa con el nuevo horario.";
+                    $json = respuestaError(
+                        $mensaje,
+                        array('fieldErrors' => array(
+                            'fechaInicio' => $mensaje,
+                            'fechaFin' => $mensaje
+                        ))
                     );
+                    return;
                 }
             }
+
+            $sqlUpdate = "UPDATE ProgramacionTurnos SET fechaInicio = ?, fechaFin = ?, idCentroTrabajo = ? WHERE idProgramacion = ?";
+            $stmtUpdate = sqlsrv_query($conn, $sqlUpdate, array($fechaInicioObj->format('Y-m-d'), $fechaFinObj->format('Y-m-d'), $idCentroTrabajo, $idProgramacion));
+            if ($stmtUpdate === false) {
+                $errors = sqlsrv_errors();
+                throw new Exception($errors[0]['message']);
+            }
+
+            $sqlEliminarDetalles = "DELETE FROM ProgramacionTurnosDetalle WHERE idProgramacion = ?";
+            $stmtEliminar = sqlsrv_query($conn, $sqlEliminarDetalles, array($idProgramacion));
+            if ($stmtEliminar === false) {
+                $errors = sqlsrv_errors();
+                throw new Exception($errors[0]['message']);
+            }
+
+            $intervaloFecha = clone $fechaInicioObj;
+            $horaInicioTurno = $turnoRow['horaInicio']->format('H:i:s');
+            $horaFinTurno = $turnoRow['horaFin']->format('H:i:s');
+            $cruzaMedianoche = strcmp($horaFinTurno, $horaInicioTurno) < 0;
+            while ($intervaloFecha <= $fechaFinObj) {
+                $fechaDetalleInicio = $intervaloFecha->format('Y-m-d');
+                $fechaDetalleFin = $cruzaMedianoche
+                    ? $intervaloFecha->add(new DateInterval('P1D'))->format('Y-m-d')
+                    : $fechaDetalleInicio;
+                if ($cruzaMedianoche) {
+                    $intervaloFecha->sub(new DateInterval('P1D'));
+                }
+
+                $sqlInsertDetalle = "INSERT INTO ProgramacionTurnosDetalle (idProgramacionDetalle, idProgramacion, fechaInicio, fechaFin, idTurno) VALUES (NEWID(), ?, ?, ?, ?)";
+                $paramsInsert = array($idProgramacion, $fechaDetalleInicio, $fechaDetalleFin, $idTurno);
+                sqlsrv_query($conn, $sqlInsertDetalle, $paramsInsert);
+                $intervaloFecha->add(new DateInterval('P1D'));
+            }
+
+            $json = respuestaExito(
+                array('idProgramacion' => ENCR::encript($idProgramacion)),
+                'Programación de turno actualizada correctamente'
+            );
         } catch (Exception $e) {
+            log_debug('update_programacion_turno exception', $e->getMessage());
             $json = respuestaError('Error al procesar la actualización: ' . $e->getMessage());
+        }
+    }
+
+    if ($_GET['band'] == 'validate_delete_programacion_turno') {
+        /**
+        Codigo hecho por mario
+        Funcion: validate_delete_programacion_turno evalua bloqueos y advertencias
+        antes de permitir la eliminacion de una programacion asignada.
+        **/
+        try {
+            $idProgramacion = isset($list_record['idProgramacion']) ? ENCR::descript($list_record['idProgramacion']) : null;
+            if (!$idProgramacion) {
+                $json = respuestaError('ID de programación no válido');
+                return;
+            }
+
+            $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'V');
+            $sqlProg = "SELECT PT.fechaInicio, PT.fechaFin, PT.idCentroTrabajo, D.Descripcion AS centroDeTrabajo, V.NombreCompleto AS nombreUsuario
+                        FROM ProgramacionTurnos PT
+                        LEFT JOIN Destino D ON PT.idCentroTrabajo = D.idDestino
+                        LEFT JOIN {$fuenteUsuarios} ON PT.idUsuario = V.idUsuario
+                        WHERE PT.idProgramacion = ?";
+            $stmtProg = sqlsrv_query($conn, $sqlProg, array($idProgramacion));
+            if ($stmtProg === false) {
+                $errors = sqlsrv_errors();
+                throw new Exception($errors[0]['message']);
+            }
+
+            if (!$programacion = sqlsrv_fetch_array($stmtProg, SQLSRV_FETCH_ASSOC)) {
+                $json = respuestaError('No se encontró la programación solicitada');
+                return;
+            }
+
+            $fechaInicio = $programacion['fechaInicio'];
+            $fechaFin = $programacion['fechaFin'];
+            $idCentroTrabajo = $programacion['idCentroTrabajo'];
+            $assignedUsers = [];
+            if (!empty($programacion['nombreUsuario'])) {
+                $assignedUsers[] = utf8_encode($programacion['nombreUsuario']);
+            }
+
+            $today = new DateTime();
+            $today->setTime(0, 0, 0);
+
+            $sqlBitacora = "SELECT COUNT(1) as total FROM Bitacora B INNER JOIN ProgramacionTurnosDetalle PD ON B.idProgramacionDetalle = PD.idProgramacionDetalle WHERE PD.idProgramacion = ?";
+            $stmtBitacora = sqlsrv_query($conn, $sqlBitacora, array($idProgramacion));
+            $bitacoraCount = 0;
+            if ($stmtBitacora !== false && $rowBitacora = sqlsrv_fetch_array($stmtBitacora, SQLSRV_FETCH_ASSOC)) {
+                $bitacoraCount = $rowBitacora['total'];
+            }
+
+            $hardBlock = false;
+            $hardMessage = '';
+            $warnings = [];
+
+            if ($bitacoraCount > 0) {
+                $hardBlock = true;
+                $hardMessage = 'La programación tiene marcaciones registradas y no puede ser eliminada.';
+            } else {
+                $fechaInicioObj = ($fechaInicio instanceof DateTime) ? clone $fechaInicio : new DateTime(date_format($fechaInicio, 'Y-m-d'));
+                $fechaFinObj = ($fechaFin instanceof DateTime) ? clone $fechaFin : new DateTime(date_format($fechaFin, 'Y-m-d'));
+                if ($fechaInicioObj <= $today && $today <= $fechaFinObj) {
+                    $hardBlock = true;
+                    $hardMessage = 'La programación está en curso o activa y no puede ser eliminada.';
+                }
+            }
+
+            $softMessage = 'No se detectaron advertencias adicionales.';
+            if (!$hardBlock && $bitacoraCount === 0) {
+                $fechaFinObj = ($fechaFin instanceof DateTime) ? clone $fechaFin : new DateTime(date_format($fechaFin, 'Y-m-d'));
+                if ($fechaFinObj < $today) {
+                    $warnings[] = 'El turno ya finalizó y no tiene registros asociados, considere conservar el historial.';
+                }
+
+                $fechaActual = ($fechaInicio instanceof DateTime) ? clone $fechaInicio : new DateTime(date_format($fechaInicio, 'Y-m-d'));
+                while ($fechaActual <= $fechaFinObj) {
+                    $fechaTexto = $fechaActual->format('Y-m-d');
+                    $sqlCobertura = "SELECT COUNT(DISTINCT PT.idProgramacion) AS total FROM ProgramacionTurnos PT INNER JOIN ProgramacionTurnosDetalle PD ON PT.idProgramacion = PD.idProgramacion WHERE PT.idCentroTrabajo = ? AND PT.activo = 1 AND PT.idProgramacion <> ? AND PD.fechaInicio = ?";
+                    $paramsCobertura = array($idCentroTrabajo, $idProgramacion, $fechaTexto);
+                    $stmtCobertura = sqlsrv_query($conn, $sqlCobertura, $paramsCobertura);
+                    if ($stmtCobertura !== false && $rowCobertura = sqlsrv_fetch_array($stmtCobertura, SQLSRV_FETCH_ASSOC)) {
+                        if (intval($rowCobertura['total']) === 0) {
+                            $warnings[] = "Eliminar esta programación dejará sin cobertura la fecha {$fechaTexto}.";
+                        }
+                    }
+                    $fechaActual->add(new DateInterval('P1D'));
+                }
+            }
+
+            if (!empty($warnings)) {
+                $softMessage = 'Se detectaron advertencias adicionales antes de eliminar.';
+            }
+
+            $json = respuestaExito(
+                array(
+                    'hardBlock' => $hardBlock,
+                    'hardMessage' => $hardMessage,
+                    'warnings' => $warnings,
+                    'softMessage' => $softMessage,
+                    'assignedUsers' => $assignedUsers,
+                    'centroTrabajo' => utf8_encode($programacion['centroDeTrabajo']),
+                    'idProgramacion' => ENCR::encript($idProgramacion)
+                ),
+                'Validación completada'
+            );
+        } catch (Exception $e) {
+            $json = respuestaError('Error al validar la eliminación: ' . $e->getMessage());
+        }
+    }
+
+    if ($_GET['band'] == 'delete_turno_definicion') {
+        /**
+        Codigo hecho por mario
+        Funcion: delete_turno_definicion aplica borrado logico al turno y a sus
+        descansos asociados, evitando eliminarlo si sigue asignado a usuarios.
+        **/
+        try {
+            $idTurno = isset($list_record['idTurno']) ? $list_record['idTurno'] : null;
+
+            if (!$idTurno) {
+                $json = respuestaError('ID de turno inválido');
+                return;
+            }
+
+            $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'V');
+            $sqlAsignaciones = "SELECT TOP 3 V.NombreCompleto, PT.fechaInicio FROM ProgramacionTurnosDetalle PD INNER JOIN ProgramacionTurnos PT ON PD.idProgramacion = PT.idProgramacion INNER JOIN {$fuenteUsuarios} ON PT.idUsuario = V.idUsuario WHERE PD.idTurno = ? AND PT.activo = 1 ORDER BY PT.fechaInicio DESC";
+            $stmtAsignaciones = sqlsrv_query($conn, $sqlAsignaciones, array($idTurno));
+
+            if ($stmtAsignaciones === false) {
+                $errors = sqlsrv_errors();
+                throw new Exception($errors[0]['message']);
+            }
+
+            $usuariosAsignados = array();
+            while ($rowAsignacion = sqlsrv_fetch_array($stmtAsignaciones, SQLSRV_FETCH_ASSOC)) {
+                $usuariosAsignados[] = utf8_encode($rowAsignacion['NombreCompleto']);
+            }
+
+            if (!empty($usuariosAsignados)) {
+                $lista = implode(', ', array_slice($usuariosAsignados, 0, 3));
+                $json = respuestaError("No se puede eliminar el turno porque está asignado a: {$lista}");
+                return;
+            }
+
+            $sqlActualizarActivo = "UPDATE turnos SET activo = 0 WHERE idTurno = ?";
+            sqlsrv_query($conn, $sqlActualizarActivo, array($idTurno));
+
+            $sqlDescansos = "UPDATE turnosDescansos SET activo = 0 WHERE idTurno = ?";
+            sqlsrv_query($conn, $sqlDescansos, array($idTurno));
+
+            $json = respuestaExito(null, 'Turno eliminado correctamente');
+        } catch (Exception $e) {
+            $json = respuestaError('Error al eliminar el turno: ' . $e->getMessage());
         }
     }
 

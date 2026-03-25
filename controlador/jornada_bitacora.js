@@ -1,3 +1,42 @@
+let turnosDisponibles = [];
+let turnoEnEdicionId = null;
+let turnoEdicionRequiresConfirmation = false;
+
+/**
+Codigo hecho por mario
+Funcion: normalizarRespuestaLista unifica respuestas del backend para trabajar
+igual con arrays directos o con respuestas en formato success/data.
+**/
+function normalizarRespuestaLista(payload) {
+    if (Array.isArray(payload)) {
+        return payload;
+    }
+
+    if (payload && payload.success && Array.isArray(payload.data)) {
+        return payload.data;
+    }
+
+    if (payload && payload.success === false) {
+        throw new Error(payload.message || 'La consulta devolvió un error');
+    }
+
+    return [];
+}
+
+/**
+Codigo hecho por mario
+Funcion: escapeHtml limpia texto antes de insertarlo en tablas y mensajes del
+frontend para evitar errores visuales o inyeccion de HTML.
+**/
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     list_Centro("");
     list_Centrotrabajo("");
@@ -13,6 +52,10 @@ document.addEventListener("DOMContentLoaded", () => {
     $("#idxid").hide();
     $("#campoRegla").hide();
     $("#campoidxid").hide();
+    const selectTurnoEdit = document.getElementById('edit_turnoTipo');
+    if (selectTurnoEdit) {
+        selectTurnoEdit.addEventListener('change', actualizarHorasTurnoSeleccionado);
+    }
 });
 /*
 async function list_Centro_trabajo(object){
@@ -97,6 +140,8 @@ function cargar_turnosAll() {
                 turnos = data || [];
             }
 
+            turnosDisponibles = turnos;
+
             let html = '<table class="table table-hover table-condensed table-bordered table-striped" style="margin: 15px;">';
             html += '<thead><tr>' +
                 '<th class="text-center">Descripción</th>' +
@@ -133,8 +178,8 @@ function cargar_turnosAll() {
                         <td class="text-center">${turno.duracion || '--:--'}</td>
                         <td class="text-center">${infoDescanso}</td>
                         <td class="text-center">
-                            <button disabled class="btn btn-xs btn-primary" onclick="editarTurno('${turno.id}')"><i class="glyphicon glyphicon-pencil"></i></button>
-                            <button disabled class="btn btn-xs btn-danger" onclick="eliminarTurno('${turno.id}')"><i class="glyphicon glyphicon-trash"></i></button>
+                            <button class="btn btn-xs btn-primary" onclick="abrirEdicionTurnoDefinicion('${turno.id}')"><i class="glyphicon glyphicon-pencil"></i></button>
+                            <button class="btn btn-xs btn-danger" onclick="iniciarEliminacionTurnoDefinicion('${turno.id}')"><i class="glyphicon glyphicon-trash"></i></button>
                         </td>
                     </tr>`;
                 });
@@ -306,6 +351,146 @@ async function get_crear_turno() {
 
 }
 
+function construirDatosTurno() {
+    const Nombre_turno = document.getElementById("Nombre_turno").value.trim();
+    const FechaInicial_turno = document.getElementById("FechaInicial_turno").value;
+    const FechaFinal_turno = document.getElementById("FechaFinal_turno").value;
+    const Duracion_turno = document.getElementById("Duracion_turno").value;
+
+    if (!Nombre_turno || !FechaInicial_turno || !FechaFinal_turno) {
+        alertify.error("Todos los campos básicos son obligatorios");
+        return null;
+    }
+
+    const payload = {
+        FechaInicial_turno,
+        FechaFinal_turno,
+        Nombre_turno,
+        Duracion_turno,
+        idusuario: id_usuario
+    };
+
+    const incluirDescanso = document.getElementById("incluir_descanso").checked;
+    payload.incluirDescanso = incluirDescanso;
+    if (incluirDescanso) {
+        const inicioDescanso = document.getElementById("inicio_descanso").value;
+        const finDescanso = document.getElementById("fin_descanso").value;
+        const duracionDescanso = document.getElementById("duracion_descanso").value;
+        const descripcionDescanso = document.getElementById("descripcion_descanso").value;
+
+        if (!inicioDescanso || !finDescanso) {
+            alertify.error("Debe indicar la hora de inicio y fin del descanso");
+            return null;
+        }
+
+        payload.inicioDescanso = inicioDescanso;
+        payload.finDescanso = finDescanso;
+        payload.duracionDescanso = duracionDescanso || null;
+        payload.descripcionDescanso = descripcionDescanso || null;
+    } else {
+        payload.inicioDescanso = null;
+        payload.finDescanso = null;
+        payload.duracionDescanso = null;
+        payload.descripcionDescanso = null;
+    }
+
+    return payload;
+}
+
+/**
+Codigo hecho por mario
+Funcion: actualizarTurno envia al backend la actualizacion de una definicion de
+turno y refresca la interfaz cuando la operacion termina correctamente.
+**/
+async function actualizarTurno() {
+    if (!turnoEnEdicionId) {
+        alertify.error("No hay ningún turno seleccionado para editar");
+        return;
+    }
+
+    const payload = construirDatosTurno();
+    if (!payload) {
+        return;
+    }
+
+    payload.idTurno = turnoEnEdicionId;
+
+    const btnEditar = document.getElementById("button_crear_t");
+    const textoOriginal = btnEditar.innerHTML;
+    btnEditar.disabled = true;
+    btnEditar.innerHTML = '<i class="glyphicon glyphicon-refresh glyphicon-spin"></i> Actualizando...';
+
+    try {
+        const confirmarEdicion = document.getElementById('confirmar_edicion_turno');
+        if (turnoEdicionRequiresConfirmation) {
+            if (!confirmarEdicion || !confirmarEdicion.checked) {
+                alertify.error('Debe confirmar que comprende el impacto de los cambios');
+                return;
+            }
+        }
+
+        let response = await sendRequest("../modelo/jornada_bitacora.php?band=update_turno_definicion", JSON.stringify(payload));
+        const resultado = JSON.parse(response);
+        if (resultado.success) {
+            alertify.success(resultado.message || 'Turno actualizado correctamente');
+            limpiarFormularioTurno();
+            cargar_turnosAll();
+        } else {
+            alertify.error(resultado.message || 'Error al actualizar el turno');
+        }
+    } catch (error) {
+        console.error("Error en la solicitud de actualización:", error);
+        alertify.error('Error al actualizar el turno: ' + error.message);
+    } finally {
+        btnEditar.disabled = false;
+        btnEditar.innerHTML = textoOriginal;
+    }
+}
+
+function llenarSelectTurnosAsignados(selectedTurnoId) {
+    const selectTurno = document.getElementById('edit_turnoTipo');
+    if (!selectTurno) {
+        return;
+    }
+
+    selectTurno.innerHTML = '';
+
+    if (turnosDisponibles.length === 0) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = 'No hay turnos definidos';
+        selectTurno.appendChild(option);
+        return;
+    }
+
+    turnosDisponibles.forEach(turno => {
+        const option = document.createElement('option');
+        option.value = turno.id;
+        const inicio = turno.horaInicio || '--:--';
+        const fin = turno.horaFin || '--:--';
+        option.textContent = `${turno.name} (${inicio} - ${fin})`;
+        if (selectedTurnoId && selectedTurnoId === turno.id) {
+            option.selected = true;
+        }
+        selectTurno.appendChild(option);
+    });
+
+    actualizarHorasTurnoSeleccionado();
+}
+
+function actualizarHorasTurnoSeleccionado() {
+    const selectTurno = document.getElementById('edit_turnoTipo');
+    const horaInicioEl = document.getElementById('edit_horaInicio');
+    const horaFinEl = document.getElementById('edit_horaFin');
+    if (!selectTurno || !horaInicioEl || !horaFinEl) {
+        return;
+    }
+
+    const turno = turnosDisponibles.find(item => item.id === selectTurno.value);
+    horaInicioEl.value = turno ? (turno.horaInicio || '') : '';
+    horaFinEl.value = turno ? (turno.horaFin || '') : '';
+}
+
 // Función auxiliar para manejar errores específicos
 function manejarErrorTurno(mensaje, codigo) {
     switch (codigo) {
@@ -345,50 +530,236 @@ function limpiarFormularioTurno() {
 
     // Restablecer el estado del checkbox
     document.getElementById('incluir_descanso').disabled = true;
+    resetTurnoFormState();
 }
 
-function editarTurno(idTurno) {
-    // Buscar el turno en la lista de turnos
-    fetch(`../modelo/jornada_bitacora.php?band=get_turno&idTurno=${idTurno}`)
-        .then(response => response.json())
-        .then(turno => {
-            // Cargar datos en el formulario
-            document.getElementById('Nombre_turno').value = turno.name;
-            document.getElementById('FechaInicial_turno').value = turno.horaInicio;
-            document.getElementById('FechaFinal_turno').value = turno.horaFin;
-            document.getElementById('Duracion_turno').value = turno.duracion;
-
-            // Cambiar el botón para editar
-            let botonCrear = document.getElementById('button_crear_t');
-            botonCrear.innerHTML = 'Actualizar Turno';
-            botonCrear.onclick = function () {
-                actualizarTurno(idTurno);
-            };
-        })
-        .catch(error => console.error('Error:', error));
+function cancelarEdicionTurno() {
+    limpiarFormularioTurno();
 }
 
-function eliminarTurno(idTurno) {
-    if (confirm('¿Está seguro que desea eliminar este turno?')) {
-        fetch(`../modelo/jornada_bitacora.php?band=eliminar_turno&idTurno=${idTurno}`, {
-            method: 'POST'
-        })
-            .then(response => response.json())
-            .then(result => {
-                if (result.success) {
-                    alertify.success('Turno eliminado correctamente');
-                    cargar_turnosAll(); // Recargar la tabla
-                } else {
-                    alertify.error('No se pudo eliminar el turno: ' + result.message);
+function resetTurnoFormState() {
+    turnoEnEdicionId = null;
+    const boton = document.getElementById('button_crear_t');
+    if (boton) {
+        boton.innerHTML = '<i class="glyphicon glyphicon-time"></i> Crear Turno';
+        boton.onclick = get_crear_turno;
+    }
+    const cancelar = document.getElementById('button_cancelar_edicion');
+    if (cancelar) {
+        cancelar.style.display = 'none';
+    }
+    const warningDiv = document.getElementById('turno_creado_warning');
+    if (warningDiv) {
+        warningDiv.style.display = 'none';
+    }
+    const confirmationCheckbox = document.getElementById('confirmar_edicion_turno');
+    if (confirmationCheckbox) {
+        confirmationCheckbox.checked = false;
+    }
+    turnoEdicionRequiresConfirmation = false;
+}
+
+async function iniciarEliminacionTurnoDefinicion(idTurno) {
+    if (!idTurno) {
+        alertify.error('ID de turno inválido');
+        return;
+    }
+
+    try {
+        const response = await fetch('../modelo/jornada_bitacora.php?band=validate_delete_turno_definicion', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ idTurno })
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+            alertify.error(data.message || 'Error al validar la eliminación del turno');
+            console.error('Validación turno:', data);
+            return;
+        }
+
+        const validation = data.data || {};
+
+        if (validation.hardBlock) {
+            const assignedList = validation.assignedUsers || [];
+            const messageParts = [];
+            if (validation.hardMessage) {
+                messageParts.push(validation.hardMessage);
+            }
+            if (assignedList.length) {
+                messageParts.push(`Usuarios asignados: ${assignedList.join(', ')}`);
+            }
+            swal('No se puede eliminar', messageParts.join('<br>'), 'error');
+            return;
+        }
+
+        const content = document.createElement('div');
+        if (validation.turnoDescripcion) {
+            const turnoDesc = document.createElement('p');
+            turnoDesc.innerHTML = `<strong>Turno:</strong> ${validation.turnoDescripcion}`;
+            content.appendChild(turnoDesc);
+        }
+
+        const assignedUsers = validation.assignedUsers || [];
+        if (assignedUsers.length) {
+            const assignedEl = document.createElement('p');
+            assignedEl.innerHTML = `<strong>Usuarios asignados:</strong> ${assignedUsers.join(', ')}`;
+            content.appendChild(assignedEl);
+        }
+
+        const warnings = validation.warnings || [];
+        const needsCheckbox = warnings.length > 0;
+        if (warnings.length) {
+            const warningList = document.createElement('div');
+            warningList.innerHTML = `<p>Advertencias:</p><ul>${warnings.map(w => `<li>${w}</li>`).join('')}</ul>`;
+            content.appendChild(warningList);
+        }
+
+        if (needsCheckbox) {
+            const checkboxWrapper = document.createElement('div');
+            checkboxWrapper.innerHTML = '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="delete-definicion-checkbox"> Confirmo que comprendo las advertencias.</label>';
+            content.appendChild(checkboxWrapper);
+        }
+
+        swal({
+            title: 'Eliminar turno',
+            text: validation.softMessage || 'Esta acción eliminará el turno.',
+            icon: needsCheckbox ? 'warning' : 'info',
+            content: content,
+            buttons: ['Cancelar', 'Eliminar'],
+            dangerMode: true
+        }).then(async (confirmado) => {
+            if (!confirmado) {
+                return;
+            }
+
+            if (needsCheckbox) {
+                const checkbox = document.getElementById('delete-definicion-checkbox');
+                if (!checkbox || !checkbox.checked) {
+                    alertify.error('Debe confirmar las advertencias marcando la casilla.');
+                    return;
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alertify.error('Error al eliminar el turno');
-            });
+            }
+
+            await eliminarTurnoDefinicion(idTurno);
+        });
+    } catch (error) {
+        console.error('Error al validar la eliminación del turno:', error);
+        alertify.error('Error al validar la eliminación del turno');
     }
 }
 
+async function eliminarTurnoDefinicion(idTurno) {
+    try {
+        const response = await fetch('../modelo/jornada_bitacora.php?band=delete_turno_definicion', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ idTurno })
+        });
+        const data = await response.json();
+        if (data.success) {
+            alertify.success(data.message || 'Turno eliminado correctamente');
+            limpiarFormularioTurno();
+            cargar_turnosAll();
+        } else {
+            alertify.error(data.message || 'No se pudo eliminar el turno');
+        }
+    } catch (error) {
+        console.error('Error al eliminar turno:', error);
+        alertify.error('Error al eliminar el turno');
+    }
+}
+
+function abrirEdicionTurnoDefinicion(idTurno) {
+    const turno = turnosDisponibles.find(item => item.id === idTurno);
+    if (!turno) {
+        alertify.error('No se encontró la definición del turno seleccionado');
+        return;
+    }
+
+    document.getElementById('Nombre_turno').value = turno.name;
+    document.getElementById('FechaInicial_turno').value = turno.horaInicio;
+    document.getElementById('FechaFinal_turno').value = turno.horaFin;
+    document.getElementById('Duracion_turno').value = turno.duracion;
+
+    if (turno.descanso) {
+        document.getElementById('incluir_descanso').checked = true;
+        document.getElementById('campos_descanso').style.display = 'block';
+        document.getElementById('inicio_descanso').value = turno.descanso.inicio;
+        document.getElementById('fin_descanso').value = turno.descanso.fin;
+        document.getElementById('duracion_descanso').value = turno.descanso.duracion;
+        document.getElementById('descripcion_descanso').value = turno.descanso.descripcion || '';
+    } else {
+        document.getElementById('incluir_descanso').checked = false;
+        document.getElementById('campos_descanso').style.display = 'none';
+        limpiarCamposDescanso();
+    }
+
+    turnoEnEdicionId = idTurno;
+    const boton = document.getElementById('button_crear_t');
+    boton.innerHTML = '<i class="glyphicon glyphicon-pencil"></i> Actualizar Turno';
+    boton.onclick = actualizarTurno;
+    document.getElementById('button_cancelar_edicion').style.display = 'inline-block';
+    cargarAdvertenciasTurnoDefinicion(idTurno);
+}
+
+async function cargarAdvertenciasTurnoDefinicion(idTurno) {
+    const warningDiv = document.getElementById('turno_creado_warning');
+    const warningText = document.getElementById('turno_creado_warning_text');
+    const confirmationCheckbox = document.getElementById('confirmar_edicion_turno');
+
+    if (!warningDiv || !warningText || !confirmationCheckbox) {
+        return;
+    }
+
+    warningDiv.style.display = 'none';
+    warningText.innerHTML = '';
+    confirmationCheckbox.checked = false;
+    turnoEdicionRequiresConfirmation = false;
+
+    try {
+        const response = await fetch('../modelo/jornada_bitacora.php?band=validate_delete_turno_definicion', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ idTurno })
+        });
+
+        const data = await response.json();
+        if (!data.success) {
+            warningText.textContent = data.message || 'No se pudieron recuperar las advertencias.';
+            warningDiv.style.display = 'block';
+            return;
+        }
+
+        const validation = data.data || {};
+        const messages = [];
+        if (validation.hardMessage) {
+            messages.push(validation.hardMessage);
+        }
+        if (validation.assignedUsers && validation.assignedUsers.length) {
+            messages.push('Usuarios asignados: ' + validation.assignedUsers.join(', '));
+        }
+        if (validation.warnings && validation.warnings.length) {
+            messages.push(...validation.warnings);
+        }
+
+        if (messages.length) {
+            warningText.innerHTML = `<strong>Advertencias:</strong><br>${messages.map(msg => `<div>${msg}</div>`).join('')}`;
+            warningDiv.style.display = 'block';
+            turnoEdicionRequiresConfirmation = true;
+        }
+    } catch (error) {
+        console.error('Error al validar las advertencias del turno:', error);
+    }
+}
 /**
  * Calcula la duración entre las horas de inicio y fin del turno
  * y habilita/deshabilita el checkbox de descanso según corresponda
@@ -658,27 +1029,22 @@ function recalcularDuracionEfectiva() {
         duracionTotal += 24 * 60 * 60 * 1000;
     }
 
+    // Calcular horas y minutos efectivos
     // Si el checkbox está marcado, restar el descanso
     if (incluirDescanso.checked) {
         const duracionDescanso = document.getElementById('duracion_descanso').value;
 
         if (duracionDescanso && duracionDescanso !== '00:00') {
-            // Convertir duración del descanso a milisegundos
             const [horasDescanso, minutosDescanso] = duracionDescanso.split(':').map(Number);
             const descansoMs = (horasDescanso * 60 * 60 + minutosDescanso * 60) * 1000;
-
-            // Restar el tiempo de descanso
             duracionTotal -= descansoMs;
         }
     }
 
-    // Calcular horas y minutos efectivos
-    const horasEfectivas = Math.floor(duracionTotal / (1000 * 60 * 60));
-    const minutosEfectivos = Math.floor((duracionTotal % (1000 * 60 * 60)) / (1000 * 60));
-
-    // Actualizar campo de duración del turno
+    const horasTotales = Math.floor(duracionTotal / (1000 * 60 * 60));
+    const minutosTotales = Math.floor((duracionTotal % (1000 * 60 * 60)) / (1000 * 60));
     document.getElementById('Duracion_turno').value =
-        `${horasEfectivas.toString().padStart(2, '0')}:${minutosEfectivos.toString().padStart(2, '0')}`;
+        `${horasTotales.toString().padStart(2, '0')}:${minutosTotales.toString().padStart(2, '0')}`;
 
     // Actualizar la descripción automática si está activada
     if (document.getElementById('descripcion_auto')?.checked) {
@@ -772,6 +1138,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
 ================================================*/
 
+/**
+ * Código hecho por Mario
+ * Función: get_Usuarios
+ * Descripción: Solicita al backend los usuarios filtrados por centro permitido,
+ *              renderiza la tabla incluyendo la empresa y mantiene el conjunto de seleccionados.
+ */
 // Variable global para almacenar IDs de usuarios seleccionados
 let usuariosSeleccionados = new Set();
 
@@ -812,7 +1184,10 @@ async function get_Usuarios(texto = '') {
         } else {
             data.data.forEach(usuario => {
                 const estaSeleccionado = usuariosSeleccionados.has(usuario.id);
-                const cargo = usuario.cargo || 'NO ESPECIFICADO';
+                const nombre = escapeHtml(usuario.nombre || '');
+                const cedula = escapeHtml(usuario.cedula || '');
+                const cargo = escapeHtml(usuario.cargo || 'NO ESPECIFICADO');
+                const empresa = escapeHtml(usuario.empresa || 'Sin empresa');
 
                 html += `
                     <tr>
@@ -823,9 +1198,10 @@ async function get_Usuarios(texto = '') {
                                 onchange="actualizarSeleccionUsuario(this)"
                                 ${estaSeleccionado ? 'checked' : ''}>
                         </td>
-                        <td>${usuario.nombre}</td>
-                        <td>${usuario.cedula}</td>
+                        <td>${nombre}</td>
+                        <td>${cedula}</td>
                         <td>${cargo}</td>
+                        <td>${empresa}</td>
                     </tr>`;
             });
         }
@@ -837,7 +1213,12 @@ async function get_Usuarios(texto = '') {
         actualizarConteo();
         actualizarEstadoSeleccionarTodos();
 
-        // 8. Agregar tooltip con información adicional
+        // 8. Refrescar filtros y opciones de empresa
+        actualizarOpcionesEmpresa(data.data || []);
+        asegurarListenersFiltrosUsuarios();
+        aplicarFiltrosUsuarios();
+
+        // 9. Agregar tooltip con información adicional
         $('[data-toggle="tooltip"]').tooltip();
 
     } catch (error) {
@@ -856,6 +1237,101 @@ async function get_Usuarios(texto = '') {
                 </tr>`;
         }
     }
+}
+
+/**
+ * Código hecho por Mario
+ * Función: actualizarOpcionesEmpresa
+ * Descripción: Reconstruye el selector de empresa con las opciones presentes en la respuesta.
+ * @param {Array} usuarios Lista de usuarios para extraer empresas únicas
+ */
+function actualizarOpcionesEmpresa(usuarios) {
+    const select = document.getElementById('filter_empresa');
+    if (!select) {
+        return;
+    }
+
+    const opciones = new Set();
+    usuarios.forEach(usuario => {
+        const nombre = (usuario.empresa || 'Sin empresa').trim();
+        if (nombre) {
+            opciones.add(nombre);
+        }
+    });
+
+    const listado = [...opciones].sort((a, b) => a.localeCompare(b));
+    const valorActual = select.value;
+    let html = '<option value="">Todas</option>';
+    listado.forEach(nombre => {
+        const seguro = escapeHtml(nombre);
+        html += `<option value="${seguro}">${seguro}</option>`;
+    });
+
+    select.innerHTML = html;
+    if (valorActual && listado.some(option => option.toLowerCase() === valorActual.toLowerCase())) {
+        select.value = valorActual;
+    } else {
+        select.value = '';
+    }
+}
+
+/**
+ * Código hecho por Mario
+ * Función: asegurarListenersFiltrosUsuarios
+ * Descripción: Adjunta listeners a los filtros de columnas para reaplicar el filtrado dinámicamente.
+ */
+function asegurarListenersFiltrosUsuarios() {
+    const inputs = [
+        document.getElementById('filter_nombre'),
+        document.getElementById('filter_cedula'),
+        document.getElementById('filter_cargo')
+    ];
+
+    inputs.forEach(input => {
+        if (input && input.dataset.filterAttached !== '1') {
+            input.addEventListener('input', aplicarFiltrosUsuarios);
+            input.dataset.filterAttached = '1';
+        }
+    });
+
+    const empresaSelect = document.getElementById('filter_empresa');
+    if (empresaSelect && empresaSelect.dataset.filterAttached !== '1') {
+        empresaSelect.addEventListener('change', aplicarFiltrosUsuarios);
+        empresaSelect.dataset.filterAttached = '1';
+    }
+}
+
+/**
+ * Código hecho por Mario
+ * Función: aplicarFiltrosUsuarios
+ * Descripción: Oculta filas según los valores ingresados en los filtros de nombre, cédula, cargo y empresa.
+ */
+function aplicarFiltrosUsuarios() {
+    const nombreFiltro = document.getElementById('filter_nombre')?.value.toLowerCase().trim() || '';
+    const cedulaFiltro = document.getElementById('filter_cedula')?.value.toLowerCase().trim() || '';
+    const cargoFiltro = document.getElementById('filter_cargo')?.value.toLowerCase().trim() || '';
+    const empresaFiltro = document.getElementById('filter_empresa')?.value.toLowerCase().trim() || '';
+
+    const filas = document.querySelectorAll('#tabla_usuarios_multiple tr');
+    filas.forEach(fila => {
+        const celdas = fila.querySelectorAll('td');
+        if (celdas.length < 5) {
+            fila.style.display = '';
+            return;
+        }
+
+        const nombre = celdas[1]?.innerText.toLowerCase().trim() || '';
+        const cedula = celdas[2]?.innerText.toLowerCase().trim() || '';
+        const cargo = celdas[3]?.innerText.toLowerCase().trim() || '';
+        const empresa = celdas[4]?.innerText.toLowerCase().trim() || '';
+
+        const cumpleNombre = nombre.includes(nombreFiltro);
+        const cumpleCedula = cedula.includes(cedulaFiltro);
+        const cumpleCargo = cargo.includes(cargoFiltro);
+        const cumpleEmpresa = empresaFiltro === '' || empresa === empresaFiltro;
+
+        fila.style.display = cumpleNombre && cumpleCedula && cumpleCargo && cumpleEmpresa ? '' : 'none';
+    });
 }
 
 // Nueva función para actualizar el Set de usuarios seleccionados
@@ -1096,25 +1572,34 @@ async function dias() {
     }
 }
 
+
+// Validaciones previas antes de eliminar programación de turno
+/**
+Codigo hecho por mario
+Funcion: cargarTurnosAsignados consulta y renderiza las programaciones de turnos
+asignadas por centro de trabajo, incluyendo acciones de editar y eliminar.
+**/
 async function cargarTurnosAsignados() {
     try {
-        // Mostrar indicador de carga
-        document.getElementById('div_turnos_asignados').innerHTML =
-            '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><p>Cargando turnos asignados...</p></div>';
+        const contenedor = document.getElementById('div_turnos_asignados');
+        if (contenedor) {
+            contenedor.innerHTML = '<div class="text-center"><i class="glyphicon glyphicon-refresh glyphicon-spin"></i> Cargando turnos asignados...</div>';
+        }
 
         const response = await fetch('../modelo/jornada_bitacora.php?band=get_turnos_asignados', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                idUsuario: id_usuario
-            })
+            body: JSON.stringify({ idUsuario: id_usuario })
         });
 
         const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Error al obtener las programaciones');
+        }
 
-        // Construir la tabla con los datos recibidos
+        const registros = data.data || [];
         let html = `
             <table id="tabla_turnos_asignados" class="table table-striped table-bordered table-hover">
                 <thead>
@@ -1132,116 +1617,158 @@ async function cargarTurnosAsignados() {
                 </thead>
                 <tbody>`;
 
-        if (data.success && data.data && data.data.length > 0) {
-            // Agregar filas con datos
-            data.data.forEach(item => {
+        if (registros.length === 0) {
+            html += '<tr><td colspan="9" class="text-center">No hay turnos asignados para mostrar</td></tr>';
+        } else {
+            registros.forEach(item => {
                 html += `<tr>
-                    <td>${item.nombre || ''}</td>
-                    <td>${item.cedula || ''}</td>
-                    <td>${item.cargo || 'NO ESPECIFICADO'}</td>
-                    <td>${item.fechaInicio || ''}</td>
-                    <td>${item.fechaFin || ''}</td>
-                    <td>${item.horaInicio || ''}</td>
-                    <td>${item.horaFin || ''}</td>
-                    <td>${item.duracion || ''}</td>
+                    <td>${escapeHtml(item.nombre || '')}</td>
+                    <td>${escapeHtml(item.cedula || '')}</td>
+                    <td>${escapeHtml(item.cargo || 'NO ESPECIFICADO')}</td>
+                    <td>${escapeHtml(item.fechaInicio || '')}</td>
+                    <td>${escapeHtml(item.fechaFin || '')}</td>
+                    <td>${escapeHtml(item.horaInicio || '')}</td>
+                    <td>${escapeHtml(item.horaFin || '')}</td>
+                    <td>${escapeHtml(item.duracion || '')}</td>
                     <td class="text-center">
-                        <button disabled class="btn btn-warning btn-sm" onclick="editarProgramacionTurno('${item.idProgramacion}')" title="Editar turno">
+                        <button class="btn btn-warning btn-sm" onclick="editarProgramacionTurno('${item.idProgramacion}')" title="Editar turno">
                             <span class="glyphicon glyphicon-pencil"></span>
                         </button>
-                        <button disabled class="btn btn-danger btn-sm" onclick="eliminarProgramacionTurno('${item.idProgramacion}')" title="Eliminar turno">
+                        <button class="btn btn-danger btn-sm" onclick="iniciarEliminacionProgramacionTurno('${item.idProgramacion}')" title="Eliminar turno">
                             <span class="glyphicon glyphicon-trash"></span>
                         </button>
                     </td>
                 </tr>`;
             });
-        } else {
-            // Solución: Crear una fila con celdas vacías para cada columna
-            html += `<tr>
-                <td class="text-center" colspan="9">No hay turnos asignados para mostrar</td>
-            </tr>`;
         }
 
-        html += `</tbody></table>`;
+        html += '</tbody></table>';
+        if (contenedor) {
+            contenedor.innerHTML = html;
+        }
 
-        // Actualizar el contenedor con la tabla
-        document.getElementById('div_turnos_asignados').innerHTML = html;
+        if ($.fn.DataTable.isDataTable('#tabla_turnos_asignados')) {
+            $('#tabla_turnos_asignados').DataTable().destroy();
+        }
 
-        // Verificar si hay datos antes de inicializar DataTable
-        if (data.success && data.data && data.data.length > 0) {
-            // Destruir DataTable si ya existe
-            if ($.fn.DataTable.isDataTable('#tabla_turnos_asignados')) {
-                $('#tabla_turnos_asignados').DataTable().destroy();
-            }
-
-            // Inicializar DataTable
+        if (registros.length > 0) {
             $('#tabla_turnos_asignados').DataTable({
-                "language": {
-                    "url": "//cdn.datatables.net/plug-ins/9dcbecd42ad/i18n/Spanish.json"
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/9dcbecd42ad/i18n/Spanish.json'
                 },
-                "ordering": true,
-                "searching": true,
-                "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "Todos"]],
-                "pageLength": 10,
-                "dom": 'Bfrtip',
-                "buttons": ['excel', 'pdf'],
-                "columnDefs": [
-                    { "orderable": false, "targets": 8 } // La columna de acciones no es ordenable
-                ]
+                ordering: true,
+                searching: true,
+                lengthMenu: [[10, 25, 50, -1], [10, 25, 50, 'Todos']],
+                pageLength: 10,
+                columnDefs: [{ orderable: false, targets: 8 }]
             });
-        } else {
-            // Para tablas sin datos, aplicar un estilo simple sin inicializar DataTable
-            $('#tabla_turnos_asignados').addClass('simple-table');
         }
-
     } catch (error) {
         console.error('Error al cargar turnos asignados:', error);
-        document.getElementById('div_turnos_asignados').innerHTML =
-            `<div class="alert alert-danger">Error al cargar los turnos asignados. Por favor intente nuevamente.</div>`;
+        const contenedor = document.getElementById('div_turnos_asignados');
+        if (contenedor) {
+            contenedor.innerHTML = `<div class="alert alert-danger">Error al cargar los turnos asignados: ${escapeHtml(error.message)}</div>`;
+        }
     }
 }
 
-// Función para eliminar programación de turno
-async function eliminarProgramacionTurno(idProgramacion) {
+/**
+Codigo hecho por mario
+Funcion: iniciarEliminacionProgramacionTurno valida advertencias y bloqueos antes
+de confirmar la eliminacion de una programacion de turnos.
+**/
+async function iniciarEliminacionProgramacionTurno(idProgramacion) {
     if (!idProgramacion) {
-        alertify.error('ID de programación no válido');
+        alertify.error('ID de programación inválido');
         return;
     }
 
-    // Confirmar antes de eliminar
-    const confirmar = await new Promise(resolve => {
-        alertify.confirm('Eliminar Turno', '¿Está seguro que desea eliminar esta programación de turno?',
-            () => resolve(true),
-            () => resolve(false)
-        ).set('labels', { ok: 'Eliminar', cancel: 'Cancelar' });
-    });
-
-    if (!confirmar) return;
-
     try {
-        // Mostrar indicador de carga
-        alertify.message('Procesando solicitud...');
+        const response = await fetch('../modelo/jornada_bitacora.php?band=validate_delete_programacion_turno', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ idProgramacion })
+        });
 
+        const data = await response.json();
+
+        if (!data.success) {
+            alertify.error(data.message || 'No se pudo validar la eliminación');
+            return;
+        }
+        const validation = data.data || {};
+
+        if (validation.hardBlock) {
+            swal('No se puede eliminar', validation.hardMessage || 'La programación está vinculada a registros activos.', 'error');
+            return;
+        }
+
+        const content = document.createElement('div');
+        const assignedUsers = validation.assignedUsers || [];
+        if (assignedUsers.length) {
+            const assignedEl = document.createElement('p');
+            assignedEl.innerHTML = `<strong>Usuarios asignados:</strong> ${assignedUsers.join(', ')}`;
+            content.appendChild(assignedEl);
+        }
+        if (validation.warnings && validation.warnings.length > 0) {
+            const warningList = document.createElement('div');
+            warningList.innerHTML = `<p>Advertencias antes de eliminar:</p><ul>${validation.warnings.map(w => `<li>${w}</li>`).join('')}</ul>`;
+            content.appendChild(warningList);
+        }
+        const checkboxWrapper = document.createElement('div');
+        checkboxWrapper.innerHTML = '<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="delete-confirm-checkbox"> Confirmo que comprendo las advertencias y deseo continuar.</label>';
+        content.appendChild(checkboxWrapper);
+
+        swal({
+            title: 'Eliminar programación',
+            text: validation.softMessage || 'Esta acción eliminará la programación seleccionada.',
+            icon: validation.warnings && validation.warnings.length > 0 ? 'warning' : 'info',
+            content: content,
+            buttons: ['Cancelar', 'Eliminar'],
+            dangerMode: true
+        }).then(async (confirmado) => {
+            if (!confirmado) {
+                return;
+            }
+            if (validation.warnings && validation.warnings.length > 0) {
+                const checkbox = document.getElementById('delete-confirm-checkbox');
+                if (!checkbox || !checkbox.checked) {
+                    alertify.error('Debe confirmar las advertencias marcando la casilla.');
+                    return;
+                }
+            }
+            await ejecutarEliminacionProgramacionTurno(idProgramacion);
+        });
+    } catch (error) {
+        console.error('Error al validar la eliminación:', error);
+        alertify.error('Error al validar la eliminación del turno');
+    }
+}
+
+async function ejecutarEliminacionProgramacionTurno(idProgramacion) {
+    try {
         const response = await fetch('../modelo/jornada_bitacora.php?band=delete_programacion_turno', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ idProgramacion: idProgramacion })
+            body: JSON.stringify({ idProgramacion })
         });
 
         const data = await response.json();
 
         if (data.success) {
             alertify.success(data.message || 'Turno eliminado correctamente');
-            // Recargar la tabla para reflejar los cambios
             cargarTurnosAsignados();
         } else {
-            alertify.error(data.message || 'Error al eliminar el turno');
+            alertify.error(data.message || 'No se pudo eliminar el turno');
             console.error('Error al eliminar:', data);
         }
     } catch (error) {
-        console.error('Error al comunicarse con el servidor:', error);
-        alertify.error('Error al comunicarse con el servidor. Por favor, inténtelo de nuevo.');
+        console.error('Error al eliminar la programación:', error);
+        alertify.error('Error al eliminar la programación. Por favor, intente nuevamente.');
     }
 }
 
@@ -1312,6 +1839,22 @@ function mostrarModalEdicion(programacion) {
         fechaInicioEl.value = programacion.fechaInicio || '';
         fechaFinEl.value = programacion.fechaFin || '';
 
+        const detalles = programacion.detallesTurno || [];
+        const turnoSeleccionado = detalles.length ? detalles[0].idTurnoRaw : (turnosDisponibles[0]?.id || '');
+        llenarSelectTurnosAsignados(turnoSeleccionado);
+        const warningText = document.getElementById('edit_warning_text');
+        if (warningText) {
+            warningText.textContent = `Este cambio afecta a ${programacion.nombreUsuario || 'el usuario asignado'}.`;
+        }
+        const confirmCheckbox = document.getElementById('edit_confirmar_cambios');
+        if (confirmCheckbox) {
+            confirmCheckbox.checked = false;
+        }
+        const validationMessages = document.getElementById('edit_validation_messages');
+        if (validationMessages) {
+            validationMessages.textContent = '';
+        }
+
         // Cargar los centros de trabajo para el datalist
         list_CentroTrabajoEdit();
 
@@ -1329,6 +1872,11 @@ function mostrarModalEdicion(programacion) {
 }
 
 // Función para cargar los centros de trabajo en el datalist de edición
+/**
+Codigo hecho por mario
+Funcion: list_CentroTrabajoEdit carga el datalist de centros de trabajo del modal
+de edicion usando el formato de respuesta actual del backend.
+**/
 function list_CentroTrabajoEdit() {
     const list_Centro = document.getElementById("list_CentroTrabajoEdit");
     if (!list_Centro) {
@@ -1345,18 +1893,17 @@ function list_CentroTrabajoEdit() {
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ texto_Centro: "" })
+        body: JSON.stringify({ idUsuario: id_usuario, texto_Centro: "" })
     })
         .then(response => response.json())
         .then(data => {
-            if (data && Array.isArray(data)) {
-                data.forEach(item => {
-                    const option = document.createElement('option');
-                    option.value = item.name;
-                    option.setAttribute('data-id', item.id);
-                    list_Centro.appendChild(option);
-                });
-            }
+            const centros = normalizarRespuestaLista(data);
+            centros.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.name;
+                option.setAttribute('data-id', item.id);
+                list_Centro.appendChild(option);
+            });
         })
         .catch(error => {
             console.error('Error al cargar los centros de trabajo:', error);
@@ -1370,6 +1917,23 @@ async function guardarCambiosProgramacion() {
     const fechaInicio = document.getElementById('edit_fechaInicio').value;
     const fechaFin = document.getElementById('edit_fechaFin').value;
     const idCentroTrabajo = consulta('edit_idCentroTrabajo', 'list_CentroTrabajoEdit');
+    const turnoSeleccionado = document.getElementById('edit_turnoTipo')?.value;
+    const confirmarCambios = document.getElementById('edit_confirmar_cambios')?.checked;
+    const mensajeValidacion = document.getElementById('edit_validation_messages');
+
+    if (!turnoSeleccionado) {
+        alertify.error('Seleccione el turno que aplicará en esta programación');
+        return;
+    }
+
+    if (!confirmarCambios) {
+        alertify.error('Debe confirmar que comprende el impacto de los cambios');
+        return;
+    }
+
+    if (mensajeValidacion) {
+        mensajeValidacion.textContent = '';
+    }
 
     // Validar datos
     if (!fechaInicio || !fechaFin || !idCentroTrabajo) {
@@ -1390,7 +1954,9 @@ async function guardarCambiosProgramacion() {
                 idProgramacion: idProgramacion,
                 fechaInicio: fechaInicio,
                 fechaFin: fechaFin,
-                idCentroTrabajo: idCentroTrabajo
+                idCentroTrabajo: idCentroTrabajo,
+                idTurno: turnoSeleccionado,
+                confirmChanges: true
             })
         });
 
@@ -1403,13 +1969,32 @@ async function guardarCambiosProgramacion() {
             // Recargar la tabla para reflejar los cambios
             cargarTurnosAsignados();
         } else {
+            const fieldErrors = data.errors?.fieldErrors;
+            if (fieldErrors && mensajeValidacion) {
+                mensajeValidacion.innerHTML = formatearMensajesValidacion(fieldErrors);
+            }
             alertify.error(data.message || 'Error al guardar los cambios');
             console.error('Error al guardar:', data);
         }
-    } catch (error) {
-        console.error('Error al comunicarse con el servidor:', error);
-        alertify.error('Error al comunicarse con el servidor. Por favor, inténtelo de nuevo.');
+        } catch (error) {
+            console.error('Error al comunicarse con el servidor:', error);
+            alertify.error('Error al comunicarse con el servidor. Por favor, inténtelo de nuevo.');
+        }
     }
+
+function formatearMensajesValidacion(fieldErrors) {
+    const friendlyNames = {
+        fechaInicio: 'Fecha Inicio',
+        fechaFin: 'Fecha Fin',
+        idCentroTrabajo: 'Centro de Trabajo',
+        idTurno: 'Turno',
+        duracion: 'Duración',
+        idProgramacion: 'Programación'
+    };
+
+    return Object.entries(fieldErrors)
+        .map(([key, message]) => `<div><strong>${friendlyNames[key] || key}:</strong> ${message}</div>`)
+        .join('');
 }
 
 // --------------------------------------------------
@@ -1429,12 +2014,12 @@ async function list_Centro(object) {
     } else {
         texto_Centro = object.value
     }
-    let param = { texto_Centro: texto_Centro };
+    let param = { idUsuario: id_usuario, texto_Centro: texto_Centro };
     let data = JSON.stringify(param);
     try {
         let response = await sendRequest(url, data);
-        // console.log(response);
-        json_parse = JSON.parse(response)
+        const json_parse = normalizarRespuestaLista(JSON.parse(response));
+        list_Centro.innerHTML = '';
         json_parse.forEach((json) => {
             let id = json['id'];
             let name = json['name'];
@@ -1454,12 +2039,13 @@ async function list_CentrotrabajoBio(object) {
     let list_Centro = document.getElementById("list_CentrotrabajoMina");
     let url = "../modelo/jornada_bitacora.php?band=get_CentrosDeTrabajo";
     let texto_Centro = object.value;
-    let param = { texto_Centro: texto_Centro };
+    let param = { idUsuario: id_usuario, texto_Centro: texto_Centro };
     let data = JSON.stringify(param);
 
     try {
         let response = await sendRequest(url, data);
-        let json_parse = JSON.parse(response);
+        let json_parse = normalizarRespuestaLista(JSON.parse(response));
+        list_Centro.innerHTML = '';
         json_parse.forEach((json) => {
             let id = json['id'];
             let name = json['name'];
