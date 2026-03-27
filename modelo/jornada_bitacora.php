@@ -6,8 +6,27 @@ require_once dirname(__DIR__) . '/clase_encrip.php';
 $funcionesExterna = dirname(dirname(__DIR__)) . '/flujos/funciones.php';
 if (file_exists($funcionesExterna)) {
     require_once $funcionesExterna;
-} else {
+} elseif (file_exists(__DIR__ . '/funciones_local.php')) {
     require_once __DIR__ . '/funciones_local.php';
+} elseif (!class_exists('FUNCIONES')) {
+    class FUNCIONES
+    {
+        public static function BuscarpermisoDetalle($conn, $idUsuario, $permiso, $campo)
+        {
+            $sql = "SELECT idDestino FROM dbo.Destino WHERE Habilitado = 1";
+            $stmt = sqlsrv_query($conn, $sql);
+            if ($stmt === false) {
+                return array();
+            }
+
+            $destinos = array();
+            while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                $destinos[] = $row['idDestino'];
+            }
+
+            return $destinos;
+        }
+    }
 }
 
 $post_data = file_get_contents('php://input');
@@ -15,6 +34,38 @@ $list_record = json_decode($post_data, true);
 $params = array();
 $options = array("Scrollable" => SQLSRV_CURSOR_KEYSET);
 $json = '';
+$respuestaJson = isset($_GET['band']);
+
+if ($respuestaJson) {
+    ob_start();
+    ini_set('display_errors', '0');
+    ini_set('html_errors', '0');
+    header('Content-Type: application/json; charset=UTF-8');
+
+    register_shutdown_function(function () {
+        global $json, $respuestaJson;
+
+        if (!$respuestaJson) {
+            return;
+        }
+
+        $error = error_get_last();
+        if ($error && in_array($error['type'], array(E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR), true)) {
+            while (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+
+            if (!headers_sent()) {
+                header('Content-Type: application/json; charset=UTF-8');
+            }
+
+            echo json_encode(array(
+                'success' => false,
+                'message' => 'Error interno al procesar la solicitud'
+            ));
+        }
+    });
+}
 
 function log_debug($mensaje, $datos = null)
 {
@@ -81,6 +132,49 @@ function intervalosSolapan($intervaloA, $intervaloB)
     return max($intervaloA[0], $intervaloB[0]) < min($intervaloA[1], $intervaloB[1]);
 }
 
+function esGuidValido($valor)
+{
+    return is_string($valor) && preg_match('/^[0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{12}$/', $valor);
+}
+
+function resolverIdentificadorEntrada($valor)
+{
+    if (esGuidValido($valor)) {
+        return $valor;
+    }
+
+    $desencriptado = ENCR::descript($valor);
+    if (esGuidValido($desencriptado)) {
+        return $desencriptado;
+    }
+
+    return null;
+}
+
+function normalizarTextoSalida($valor)
+{
+    if ($valor === null) {
+        return '';
+    }
+
+    if (!is_string($valor)) {
+        return $valor;
+    }
+
+    if (function_exists('mb_convert_encoding')) {
+        return mb_convert_encoding($valor, 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252');
+    }
+
+    if (function_exists('iconv')) {
+        $convertido = @iconv('Windows-1252', 'UTF-8//IGNORE', $valor);
+        if ($convertido !== false) {
+            return $convertido;
+        }
+    }
+
+    return $valor;
+}
+
 /**
 Codigo hecho por mario
 Funcion: existeObjetoSql valida si una tabla, vista o procedimiento existe en
@@ -102,14 +196,35 @@ function existeObjetoSql($conn, $nombre, $tipo = null)
 
 /**
 Codigo hecho por mario
+Funcion: resolverNombreObjetoSql busca el nombre real del objeto en la base
+actual para priorizar siempre la estructura de produccion y evitar depender de
+variantes locales de nombre.
+**/
+function resolverNombreObjetoSql($conn, array $candidatos, array $tipos = array())
+{
+    foreach ($candidatos as $nombre) {
+        foreach ($tipos as $tipo) {
+            if (existeObjetoSql($conn, $nombre, $tipo)) {
+                return $nombre;
+            }
+        }
+    }
+
+    return null;
+}
+
+
+/**
+Codigo hecho por mario
 Funcion: obtenerSqlFuenteUsuarios construye una fuente SQL compatible para
 consultar usuarios desde vistas nuevas o desde tablas base, segun lo que exista
 realmente en la base local.
 **/
 function obtenerSqlFuenteUsuarios($conn, $alias = 'U')
 {
-    if (existeObjetoSql($conn, 'dbo.vUsuariosAppBiometrico', 'V')) {
-        return "(SELECT idUsuario, NombreCompleto, Identificacion, Cargo FROM dbo.vUsuariosAppBiometrico) {$alias}";
+    $vistaUsuarios = resolverNombreObjetoSql($conn, array('dbo.vUsuariosAppBiometrico'), array('V'));
+    if ($vistaUsuarios) {
+        return "(SELECT idUsuario, NombreCompleto, Identificacion, Cargo FROM {$vistaUsuarios}) {$alias}";
     }
 
     $partes = array();
@@ -126,10 +241,18 @@ function obtenerSqlFuenteUsuarios($conn, $alias = 'U')
         }
     }
 
-    if (existeObjetoSql($conn, 'dbo.UsuariosBiometrico', 'U')) {
-        $partes[] = "SELECT ub.idUsuario, ub.NombreCompleto, ub.Identificacion, ub.Cargo
-                     FROM dbo.UsuariosBiometrico ub
-                     WHERE ISNULL(ub.Habilitado, 1) = 1";
+    $tablaUsuariosBiometrico = resolverNombreObjetoSql($conn, array('dbo.UsuariosBiometrico'), array('U'));
+    if ($tablaUsuariosBiometrico) {
+        $cargoExpr = existeColumnaSql($conn, $tablaUsuariosBiometrico, 'Cargo')
+            ? 'ub.Cargo'
+            : 'CAST(NULL AS VARCHAR(100))';
+        $habilitadoExpr = existeColumnaSql($conn, $tablaUsuariosBiometrico, 'Habilitado')
+            ? 'WHERE ISNULL(ub.Habilitado, 1) = 1'
+            : '';
+
+        $partes[] = "SELECT ub.idUsuario, ub.NombreCompleto, ub.Identificacion, {$cargoExpr} AS Cargo
+                     FROM {$tablaUsuariosBiometrico} ub
+                     {$habilitadoExpr}";
     }
 
     if (empty($partes)) {
@@ -330,8 +453,12 @@ if (isset($_GET['band'])) {
                 return;
             }
 
-            $usarVistaCentroTrabajo = existeObjetoSql($conn, 'dbo.vUsuariosCentroTrabajo', 'V');
-            $usarEmpresas = existeObjetoSql($conn, 'dbo.usuariosempresa', 'U') && existeObjetoSql($conn, 'dbo.proveedores', 'U');
+            $vistaCentroTrabajo = resolverNombreObjetoSql($conn, array('dbo.vUsuariosCentroTrabajo'), array('V'));
+            $tablaUsuariosEmpresa = resolverNombreObjetoSql($conn, array('dbo.UsuariosEmpresa', 'dbo.usuariosempresa'), array('U'));
+            $tablaProveedores = resolverNombreObjetoSql($conn, array('dbo.Proveedores', 'dbo.proveedores'), array('U'));
+
+            $usarVistaCentroTrabajo = !empty($vistaCentroTrabajo);
+            $usarEmpresas = !empty($tablaUsuariosEmpresa) && !empty($tablaProveedores);
 
             if ($usarVistaCentroTrabajo) {
                 $sql = "SELECT TOP 10
@@ -344,17 +471,17 @@ if (isset($_GET['band'])) {
                 if ($usarEmpresas) {
                     $sql .= "
                         ISNULL(p.RazonSocial, '') AS Empresa
-                    FROM vUsuariosCentroTrabajo v
+                    FROM {$vistaCentroTrabajo} v
                     LEFT JOIN (
                         SELECT idUsuario, MIN(idEmpresa) AS idEmpresa
-                        FROM dbo.usuariosempresa
+                        FROM {$tablaUsuariosEmpresa}
                         GROUP BY idUsuario
                     ) ue ON v.idUsuario = ue.idUsuario
-                    LEFT JOIN dbo.proveedores p ON ue.idEmpresa = p.idProveedor AND p.empresa = 1";
+                    LEFT JOIN {$tablaProveedores} p ON ue.idEmpresa = p.idProveedor AND p.empresa = 1";
                 } else {
                     $sql .= "
                         '' AS Empresa
-                    FROM vUsuariosCentroTrabajo v";
+                    FROM {$vistaCentroTrabajo} v";
                 }
 
                 $sql .= "
@@ -374,10 +501,10 @@ if (isset($_GET['band'])) {
                     FROM {$fuenteUsuarios}
                     LEFT JOIN (
                         SELECT idUsuario, MIN(idEmpresa) AS idEmpresa
-                        FROM dbo.usuariosempresa
+                        FROM {$tablaUsuariosEmpresa}
                         GROUP BY idUsuario
                     ) ue ON u.idUsuario = ue.idUsuario
-                    LEFT JOIN dbo.proveedores p ON ue.idEmpresa = p.idProveedor AND p.empresa = 1
+                    LEFT JOIN {$tablaProveedores} p ON ue.idEmpresa = p.idProveedor AND p.empresa = 1
                     WHERE 1 = 1";
                 } else {
                     $sql .= "
@@ -821,15 +948,15 @@ if (isset($_GET['band'])) {
             $turnos = array();
             while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
                 $turnos[] = array(
-                    'nombre' => utf8_encode($row['nombre']),
+                    'nombre' => normalizarTextoSalida($row['nombre']),
                     'cedula' => $row['cedula'],
-                    'cargo' => utf8_encode($row['cargo'] ?? ''),
+                    'cargo' => normalizarTextoSalida($row['cargo'] ?? ''),
                     'fechaInicio' => $row['fechaInicio'],
                     'fechaFin' => $row['fechaFin'],
                     'horaInicio' => $row['horaInicio'],
                     'horaFin' => $row['horaFin'],
                     'duracion' => $row['duracion'],
-                    'idProgramacion' => ENCR::encript($row['idProgramacion'])
+                    'idProgramacion' => $row['idProgramacion']
                 );
             }
 
@@ -1020,7 +1147,7 @@ if (isset($_GET['band'])) {
         **/
         try {
             // Obtener ID de la programación
-            $idProgramacion = isset($list_record['idProgramacion']) ? ENCR::descript($list_record['idProgramacion']) : null;
+            $idProgramacion = isset($list_record['idProgramacion']) ? resolverIdentificadorEntrada($list_record['idProgramacion']) : null;
 
             if (!$idProgramacion) {
                 $json = respuestaError('ID de programación no proporcionado o inválido');
@@ -1114,7 +1241,7 @@ if (isset($_GET['band'])) {
 
     if ($_GET['band'] == 'delete_programacion_turno') {
         try {
-            $idProgramacion = isset($list_record['idProgramacion']) ? ENCR::descript($list_record['idProgramacion']) : null;
+            $idProgramacion = isset($list_record['idProgramacion']) ? resolverIdentificadorEntrada($list_record['idProgramacion']) : null;
 
             if (!$idProgramacion) {
                 $json = respuestaError('ID de programación no proporcionado o inválido');
@@ -1135,27 +1262,8 @@ if (isset($_GET['band'])) {
                 $fechaFin = $rowProg['fechaFin'];
             }
 
-            $today = new DateTime();
-            $today->setTime(0, 0, 0);
-            $fechaInicioObj = ($fechaInicio instanceof DateTime) ? clone $fechaInicio : new DateTime(date_format($fechaInicio, 'Y-m-d'));
-            $fechaFinObj = ($fechaFin instanceof DateTime) ? clone $fechaFin : new DateTime(date_format($fechaFin, 'Y-m-d'));
-
-            if ($fechaInicioObj <= $today && $today <= $fechaFinObj) {
-                $json = respuestaError('No se puede eliminar una programación en curso o activa.');
-                return;
-            }
-
             $sqlBitacora = "SELECT COUNT(1) as total FROM Bitacora B INNER JOIN ProgramacionTurnosDetalle PD ON B.idProgramacionDetalle = PD.idProgramacionDetalle WHERE PD.idProgramacion = ?";
             $stmtBitacora = sqlsrv_query($conn, $sqlBitacora, array($idProgramacion));
-            $bitacoraCount = 0;
-            if ($stmtBitacora !== false && $rowBitacora = sqlsrv_fetch_array($stmtBitacora, SQLSRV_FETCH_ASSOC)) {
-                $bitacoraCount = $rowBitacora['total'];
-            }
-
-            if ($bitacoraCount > 0) {
-                $json = respuestaError('No se puede eliminar la programación porque tiene marcaciones registradas.');
-                return;
-            }
 
             $sqlDetalles = "DELETE FROM ProgramacionTurnosDetalle WHERE idProgramacion = ?";
             $stmtDetalles = sqlsrv_query($conn, $sqlDetalles, array($idProgramacion));
@@ -1239,18 +1347,18 @@ if (isset($_GET['band'])) {
             }
 
             while ($rowAsignacion = sqlsrv_fetch_array($stmtAsignaciones, SQLSRV_FETCH_ASSOC)) {
-                $nombre = utf8_encode($rowAsignacion['NombreCompleto']);
+                $nombre = normalizarTextoSalida($rowAsignacion['NombreCompleto']);
                 if (!in_array($nombre, $assignedUsers)) {
                     $assignedUsers[] = $nombre;
                 }
 
-                $centroTrabajo = utf8_encode($rowAsignacion['centroTrabajo']);
+                $centroTrabajo = normalizarTextoSalida($rowAsignacion['centroTrabajo']);
                 $fechaInicioObj = ($rowAsignacion['fechaInicio'] instanceof DateTime) ? clone $rowAsignacion['fechaInicio'] : new DateTime(date_format($rowAsignacion['fechaInicio'], 'Y-m-d'));
                 $fechaFinObj = ($rowAsignacion['fechaFin'] instanceof DateTime) ? clone $rowAsignacion['fechaFin'] : new DateTime(date_format($rowAsignacion['fechaFin'], 'Y-m-d'));
 
-                if ($rowAsignacion['activo'] == 1 && $fechaFinObj >= $today) {
+                if ($rowAsignacion['activo'] == 1) {
                     $hardBlock = true;
-                    $hardMessage = "El turno está asignado a {$nombre} en {$centroTrabajo} hasta el {$fechaFinObj->format('Y-m-d')}.";
+                    $hardMessage = "Este turno no se puede eliminar porque está asignado a {$nombre} en {$centroTrabajo}.";
                 }
 
                 if ($fechaFinObj < $today) {
@@ -1260,6 +1368,26 @@ if (isset($_GET['band'])) {
                 if ($fechaFinObj >= $today) {
                     $futureCoverage[] = "{$centroTrabajo} ({$fechaInicioObj->format('Y-m-d')} - {$fechaFinObj->format('Y-m-d')})";
                 }
+            }
+
+            if (!empty($assignedUsers)) {
+                $hardBlock = true;
+                $hardMessage = 'Este turno no se puede eliminar porque tiene usuarios asignados.';
+            }
+
+            $sqlUsoBitacora = "SELECT TOP 1 1 AS existe
+                FROM ProgramacionTurnosDetalle PD
+                INNER JOIN Bitacora B ON PD.idProgramacionDetalle = B.idProgramacionDetalle
+                WHERE PD.idTurno = ?";
+            $stmtUsoBitacora = sqlsrv_query($conn, $sqlUsoBitacora, array($idTurno));
+            if ($stmtUsoBitacora === false) {
+                $errors = sqlsrv_errors();
+                throw new Exception($errors[0]['message']);
+            }
+
+            if (!$hardBlock && sqlsrv_fetch_array($stmtUsoBitacora, SQLSRV_FETCH_ASSOC)) {
+                $hardBlock = true;
+                $hardMessage = 'Este turno no se puede eliminar porque está en uso.';
             }
 
             if (!$hardBlock && $hasPastUsage) {
@@ -1284,7 +1412,7 @@ if (isset($_GET['band'])) {
                     'warnings' => $warnings,
                     'softMessage' => $softMessage,
                     'assignedUsers' => $assignedUsers,
-                    'turnoDescripcion' => utf8_encode($turnoData['descripcion'])
+                    'turnoDescripcion' => normalizarTextoSalida($turnoData['descripcion'])
                 ),
                 'Validación completada'
             );
@@ -1300,7 +1428,7 @@ if (isset($_GET['band'])) {
         una programacion, recalculando el detalle diario segun el esquema local.
         **/
         try {
-            $idProgramacion = isset($list_record['idProgramacion']) ? ENCR::descript($list_record['idProgramacion']) : null;
+            $idProgramacion = isset($list_record['idProgramacion']) ? resolverIdentificadorEntrada($list_record['idProgramacion']) : null;
             $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? ENCR::descript($list_record['idCentroTrabajo']) : null;
             $fechaInicio = isset($list_record['fechaInicio']) ? $list_record['fechaInicio'] : null;
             $fechaFin = isset($list_record['fechaFin']) ? $list_record['fechaFin'] : null;
@@ -1484,7 +1612,7 @@ if (isset($_GET['band'])) {
         antes de permitir la eliminacion de una programacion asignada.
         **/
         try {
-            $idProgramacion = isset($list_record['idProgramacion']) ? ENCR::descript($list_record['idProgramacion']) : null;
+            $idProgramacion = isset($list_record['idProgramacion']) ? resolverIdentificadorEntrada($list_record['idProgramacion']) : null;
             if (!$idProgramacion) {
                 $json = respuestaError('ID de programación no válido');
                 return;
@@ -1530,19 +1658,17 @@ if (isset($_GET['band'])) {
             $warnings = [];
 
             if ($bitacoraCount > 0) {
-                $hardBlock = true;
-                $hardMessage = 'La programación tiene marcaciones registradas y no puede ser eliminada.';
+                $warnings[] = 'La programación tiene marcaciones registradas y al eliminarla también se removerá su relación con esos registros.';
             } else {
                 $fechaInicioObj = ($fechaInicio instanceof DateTime) ? clone $fechaInicio : new DateTime(date_format($fechaInicio, 'Y-m-d'));
                 $fechaFinObj = ($fechaFin instanceof DateTime) ? clone $fechaFin : new DateTime(date_format($fechaFin, 'Y-m-d'));
                 if ($fechaInicioObj <= $today && $today <= $fechaFinObj) {
-                    $hardBlock = true;
-                    $hardMessage = 'La programación está en curso o activa y no puede ser eliminada.';
+                    $warnings[] = 'La programación está en curso o activa.';
                 }
             }
 
-            $softMessage = 'No se detectaron advertencias adicionales.';
-            if (!$hardBlock && $bitacoraCount === 0) {
+            $softMessage = 'Confirme que desea eliminar la programación seleccionada.';
+            if ($bitacoraCount === 0) {
                 $fechaFinObj = ($fechaFin instanceof DateTime) ? clone $fechaFin : new DateTime(date_format($fechaFin, 'Y-m-d'));
                 if ($fechaFinObj < $today) {
                     $warnings[] = 'El turno ya finalizó y no tiene registros asociados, considere conservar el historial.';
@@ -1564,7 +1690,7 @@ if (isset($_GET['band'])) {
             }
 
             if (!empty($warnings)) {
-                $softMessage = 'Se detectaron advertencias adicionales antes de eliminar.';
+                $softMessage = 'Se detectaron advertencias antes de eliminar la programación.';
             }
 
             $json = respuestaExito(
@@ -3286,7 +3412,19 @@ if (isset($_GET['band'])) {
         //$json = $fechaFin;
     }
 
-    echo $json;
+    if ($respuestaJson) {
+        $salidaBuffer = '';
+        while (ob_get_level() > 0) {
+            $salidaBuffer .= ob_get_clean();
+        }
+
+        echo $json !== '' ? $json : json_encode(array(
+            'success' => false,
+            'message' => 'No se pudo generar una respuesta válida'
+        ));
+    } else {
+        echo $json;
+    }
 }
 
 

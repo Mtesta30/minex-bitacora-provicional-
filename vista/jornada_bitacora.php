@@ -68,7 +68,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
     <script src="https://cdn.jsdelivr.net/npm/multiple-select@1.5.2/dist/multiple-select.min.js"></script>
 
     <!-- Controlador -->
-    <script type="text/javascript" src="../controlador/jornada_bitacora.js"></script>
+    <script type="text/javascript" src="../controlador/jornada_bitacora.js?v=20260327-2"></script>
 </head>
 
 <body>
@@ -166,6 +166,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                 <div class="table-responsive">
                     <div id="div_tabla2"></div>
                 </div>
+                <div id="controles_tabla_turnos_inferior"></div>
             </div>
         </div>
 
@@ -571,6 +572,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
 
                 <h3 class="mb-4">TURNOS CREADOS</h3>
                 <!-- Tabla de turnos existentes -->
+                <div id="controles_tabla_turnos_superior"></div>
                 <div class="table-responsive">
                     <div id="div_tabla_turnos" class="text-center">
                         <!-- La tabla se mostrará aquí -->
@@ -665,8 +667,9 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     </div>
                 </div>
 
+                <div id="controles_tabla_usuarios_superior"></div>
                 <div class="table-responsive" style="margin-top: 15px;">
-                    <table class="table table-striped table-bordered table-hover">
+                    <table id="tabla_usuarios_asignacion" class="table table-striped table-bordered table-hover">
                 <thead>
                     <tr>
                         <th class="text-center" style="width: 40px;">
@@ -700,6 +703,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                         </tbody>
                     </table>
                 </div>
+                <div id="controles_tabla_usuarios_inferior"></div>
 
                 <div class="row" style="margin-bottom: 15px;">
                     <div class="col-xs-12 text-center">

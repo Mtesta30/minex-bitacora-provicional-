@@ -1,27 +1,8 @@
 let turnosDisponibles = [];
 let turnoEnEdicionId = null;
 let turnoEdicionRequiresConfirmation = false;
+let tablasPaginadas = {};
 
-/**
-Codigo hecho por mario
-Funcion: normalizarRespuestaLista unifica respuestas del backend para trabajar
-igual con arrays directos o con respuestas en formato success/data.
-**/
-function normalizarRespuestaLista(payload) {
-    if (Array.isArray(payload)) {
-        return payload;
-    }
-
-    if (payload && payload.success && Array.isArray(payload.data)) {
-        return payload.data;
-    }
-
-    if (payload && payload.success === false) {
-        throw new Error(payload.message || 'La consulta devolvió un error');
-    }
-
-    return [];
-}
 
 /**
 Codigo hecho por mario
@@ -35,6 +16,276 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+function sincronizarCheckboxesUsuarios() {
+    document.querySelectorAll('#tabla_usuarios_multiple input[name="usuarios[]"]').forEach(checkbox => {
+        checkbox.checked = usuariosSeleccionados.has(checkbox.value);
+    });
+    actualizarEstadoSeleccionarTodos();
+}
+
+function crearControlesTabla(selector, opciones = {}) {
+    const table = document.querySelector(selector);
+    if (!table) {
+        return;
+    }
+
+    const key = selector;
+    const wrapper = table.closest('.table-responsive') || table.parentElement;
+    const tbody = table.querySelector('tbody');
+    if (!wrapper || !tbody) {
+        return;
+    }
+
+    const topContainer = opciones.topContainerSelector ? document.querySelector(opciones.topContainerSelector) : null;
+    const bottomContainer = opciones.bottomContainerSelector ? document.querySelector(opciones.bottomContainerSelector) : null;
+
+    wrapper.querySelectorAll(`[data-table-controls="${key}"]`).forEach(node => node.remove());
+    if (topContainer) {
+        topContainer.innerHTML = '';
+    }
+    if (bottomContainer) {
+        bottomContainer.innerHTML = '';
+    }
+
+    const topControls = document.createElement('div');
+    topControls.setAttribute('data-table-controls', key);
+    topControls.className = 'row';
+    topControls.style.margin = '10px 0';
+    topControls.innerHTML = `
+        <div class="col-xs-12 col-sm-6" style="margin-bottom:8px;">
+            <label style="font-weight:600; margin-right:8px;">Show</label>
+            <select class="form-control input-sm" style="width:110px; display:inline-block;">
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+            <label style="font-weight:600; margin-left:8px;">entries</label>
+        </div>
+        <div class="col-xs-12 col-sm-6 text-right">
+            <label style="font-weight:600; margin-right:8px;">Search:</label>
+            <input type="text" class="form-control input-sm" style="width:300px; max-width:100%; display:inline-block;">
+        </div>
+    `;
+
+    const bottomControls = document.createElement('div');
+    bottomControls.setAttribute('data-table-controls', key);
+    bottomControls.className = 'row';
+    bottomControls.style.margin = '10px 0';
+    bottomControls.innerHTML = `
+        <div class="col-xs-12 col-sm-6" data-role="info"></div>
+        <div class="col-xs-12 col-sm-6 text-right" data-role="pagination"></div>
+    `;
+
+    if (topContainer) {
+        topContainer.appendChild(topControls);
+    } else {
+        wrapper.insertBefore(topControls, table);
+    }
+
+    if (bottomContainer) {
+        bottomContainer.appendChild(bottomControls);
+    } else {
+        wrapper.appendChild(bottomControls);
+    }
+
+    const selectEntries = topControls.querySelector('select');
+    const inputSearch = topControls.querySelector('input');
+    const info = bottomControls.querySelector('[data-role="info"]');
+    const pagination = bottomControls.querySelector('[data-role="pagination"]');
+
+    const state = {
+        page: 1,
+        pageSize: parseInt(selectEntries.value, 10),
+        search: '',
+        selector,
+        filterSelector: opciones.filterSelector || null,
+        afterRender: opciones.afterRender || null
+    };
+
+    tablasPaginadas[key] = state;
+
+    function obtenerFilasDatos() {
+        return Array.from(tbody.querySelectorAll('tr')).filter(row => {
+            const cells = row.querySelectorAll('td');
+            if (!cells.length) {
+                return false;
+            }
+            if (cells.length === 1 && cells[0].hasAttribute('colspan')) {
+                return false;
+            }
+            return true;
+        });
+    }
+
+    function obtenerFilaVacia() {
+        return Array.from(tbody.querySelectorAll('tr')).find(row => {
+            const cells = row.querySelectorAll('td');
+            return cells.length === 1 && cells[0].hasAttribute('colspan');
+        });
+    }
+
+    function cumpleFiltrosColumna(row) {
+        if (!state.filterSelector) {
+            return true;
+        }
+
+        const filtros = document.querySelectorAll(`${state.filterSelector} th`);
+        const cells = row.querySelectorAll('td');
+        for (let index = 0; index < filtros.length; index++) {
+            const control = filtros[index].querySelector('input, select');
+            if (!control) {
+                continue;
+            }
+
+            const valorFiltro = (control.value || '').toLowerCase().trim();
+            if (!valorFiltro) {
+                continue;
+            }
+
+            const textoCelda = (cells[index]?.innerText || '').toLowerCase().trim();
+            if (!textoCelda.includes(valorFiltro)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function renderPagination(totalPages) {
+        if (totalPages <= 1) {
+            pagination.innerHTML = '';
+            return;
+        }
+
+        const items = [];
+        items.push(`<button type="button" class="btn btn-default btn-sm" data-page="prev" ${state.page === 1 ? 'disabled' : ''}>Previous</button>`);
+
+        const start = Math.max(1, state.page - 2);
+        const end = Math.min(totalPages, state.page + 2);
+
+        if (start > 1) {
+            items.push(`<button type="button" class="btn btn-default btn-sm" data-page="1">1</button>`);
+            if (start > 2) {
+                items.push('<span style="display:inline-block;padding:6px 8px;">...</span>');
+            }
+        }
+
+        for (let page = start; page <= end; page++) {
+            items.push(`<button type="button" class="btn btn-sm ${page === state.page ? 'btn-primary' : 'btn-default'}" data-page="${page}">${page}</button>`);
+        }
+
+        if (end < totalPages) {
+            if (end < totalPages - 1) {
+                items.push('<span style="display:inline-block;padding:6px 8px;">...</span>');
+            }
+            items.push(`<button type="button" class="btn btn-default btn-sm" data-page="${totalPages}">${totalPages}</button>`);
+        }
+
+        items.push(`<button type="button" class="btn btn-default btn-sm" data-page="next" ${state.page === totalPages ? 'disabled' : ''}>Next</button>`);
+        pagination.innerHTML = items.join(' ');
+
+        pagination.querySelectorAll('button[data-page]').forEach(button => {
+            button.addEventListener('click', () => {
+                const target = button.getAttribute('data-page');
+                if (target === 'prev' && state.page > 1) {
+                    state.page--;
+                } else if (target === 'next' && state.page < totalPages) {
+                    state.page++;
+                } else if (!Number.isNaN(parseInt(target, 10))) {
+                    state.page = parseInt(target, 10);
+                }
+                render();
+            });
+        });
+    }
+
+    function render() {
+        const rows = obtenerFilasDatos();
+        const emptyRow = obtenerFilaVacia();
+
+        const filteredRows = rows.filter(row => {
+            const rowText = row.innerText.toLowerCase();
+            const matchesSearch = !state.search || rowText.includes(state.search);
+            return matchesSearch && cumpleFiltrosColumna(row);
+        });
+
+        const total = filteredRows.length;
+        const totalPages = Math.max(1, Math.ceil(total / state.pageSize));
+        if (state.page > totalPages) {
+            state.page = totalPages;
+        }
+
+        const startIndex = total === 0 ? 0 : (state.page - 1) * state.pageSize;
+        const endIndex = Math.min(startIndex + state.pageSize, total);
+        const visibleRows = new Set(filteredRows.slice(startIndex, endIndex));
+
+        rows.forEach(row => {
+            row.style.display = visibleRows.has(row) ? '' : 'none';
+        });
+
+        if (emptyRow) {
+            emptyRow.style.display = total === 0 ? '' : 'none';
+        }
+
+        info.innerHTML = total === 0
+            ? 'Showing 0 to 0 of 0 entries'
+            : `Showing ${startIndex + 1} to ${endIndex} of ${total} entries`;
+
+        renderPagination(totalPages);
+
+        if (typeof state.afterRender === 'function') {
+            state.afterRender();
+        }
+    }
+
+    selectEntries.addEventListener('change', () => {
+        state.pageSize = parseInt(selectEntries.value, 10);
+        state.page = 1;
+        render();
+    });
+
+    inputSearch.addEventListener('input', () => {
+        state.search = inputSearch.value.toLowerCase().trim();
+        state.page = 1;
+        render();
+    });
+
+    if (state.filterSelector) {
+        document.querySelectorAll(`${state.filterSelector} input, ${state.filterSelector} select`).forEach(control => {
+            control.oninput = null;
+            control.onchange = null;
+            control.addEventListener('input', () => {
+                state.page = 1;
+                render();
+            });
+            control.addEventListener('change', () => {
+                state.page = 1;
+                render();
+            });
+        });
+    }
+
+    render();
+}
+
+function inicializarTablaUsuariosAsignacion() {
+    crearControlesTabla('#tabla_usuarios_asignacion', {
+        filterSelector: '#filtros_usuarios',
+        afterRender: sincronizarCheckboxesUsuarios,
+        topContainerSelector: '#controles_tabla_usuarios_superior',
+        bottomContainerSelector: '#controles_tabla_usuarios_inferior'
+    });
+}
+
+function inicializarTablaTurnosCreados() {
+    crearControlesTabla('#tabla_turnos_creados', {
+        filterSelector: '#filtros_turnos_creados',
+        topContainerSelector: '#controles_tabla_turnos_superior',
+        bottomContainerSelector: '#controles_tabla_turnos_inferior'
+    });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -142,7 +393,7 @@ function cargar_turnosAll() {
 
             turnosDisponibles = turnos;
 
-            let html = '<table class="table table-hover table-condensed table-bordered table-striped" style="margin: 15px;">';
+            let html = '<table id="tabla_turnos_creados" class="table table-hover table-condensed table-bordered table-striped" style="margin: 15px;">';
             html += '<thead><tr>' +
                 '<th class="text-center">Descripción</th>' +
                 '<th class="text-center">Hora Inicio</th>' +
@@ -150,6 +401,14 @@ function cargar_turnosAll() {
                 '<th class="text-center">Duración</th>' +
                 '<th class="text-center">Descanso</th>' + // Nueva columna para descanso
                 '<th class="text-center">Acciones</th>' +
+                '</tr>' +
+                '<tr id="filtros_turnos_creados">' +
+                '<th><input type="text" class="form-control input-sm" placeholder="Filtrar descripción"></th>' +
+                '<th><input type="text" class="form-control input-sm" placeholder="Filtrar hora inicio"></th>' +
+                '<th><input type="text" class="form-control input-sm" placeholder="Filtrar hora fin"></th>' +
+                '<th><input type="text" class="form-control input-sm" placeholder="Filtrar duración"></th>' +
+                '<th><input type="text" class="form-control input-sm" placeholder="Filtrar descanso"></th>' +
+                '<th></th>' +
                 '</tr></thead><tbody>';
 
             if (turnos.length === 0) {
@@ -189,6 +448,9 @@ function cargar_turnosAll() {
 
             if (tablaTurnos) {
                 tablaTurnos.innerHTML = html;
+                setTimeout(() => {
+                    inicializarTablaTurnosCreados();
+                }, 200);
 
                 // Inicializar tooltips si hay turnos con descanso
                 if (turnos.some(t => t.descanso)) {
@@ -1215,8 +1477,10 @@ async function get_Usuarios(texto = '') {
 
         // 8. Refrescar filtros y opciones de empresa
         actualizarOpcionesEmpresa(data.data || []);
-        asegurarListenersFiltrosUsuarios();
-        aplicarFiltrosUsuarios();
+        setTimeout(() => {
+            inicializarTablaUsuariosAsignacion();
+            sincronizarCheckboxesUsuarios();
+        }, 200);
 
         // 9. Agregar tooltip con información adicional
         $('[data-toggle="tooltip"]').tooltip();
@@ -1346,8 +1610,8 @@ function actualizarSeleccionUsuario(checkbox) {
 
 // Función modificada para seleccionar/deseleccionar todos
 function seleccionarTodos() {
-    let checkboxes = document.getElementsByName('usuarios[]');
     let seleccionarTodos = document.getElementById('seleccionar_todos').checked;
+    let checkboxes = document.querySelectorAll('#tabla_usuarios_multiple tr:not([style*="display: none"]) input[name="usuarios[]"]');
 
     for (let i = 0; i < checkboxes.length; i++) {
         checkboxes[i].checked = seleccionarTodos;
@@ -1364,9 +1628,15 @@ function seleccionarTodos() {
 
 // Función para actualizar el estado del checkbox "seleccionar todos"
 function actualizarEstadoSeleccionarTodos() {
-    let checkboxes = document.getElementsByName('usuarios[]');
+    let checkboxes = document.querySelectorAll('#tabla_usuarios_multiple tr:not([style*="display: none"]) input[name="usuarios[]"]');
     let todosSeleccionados = true;
     let ningunSeleccionado = true;
+
+    if (!checkboxes.length) {
+        document.getElementById('seleccionar_todos').checked = false;
+        document.getElementById('seleccionar_todos').indeterminate = false;
+        return;
+    }
 
     for (let i = 0; i < checkboxes.length; i++) {
         if (!checkboxes[i].checked) {
