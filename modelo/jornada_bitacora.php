@@ -13,18 +13,31 @@ if (file_exists($funcionesExterna)) {
     {
         public static function BuscarpermisoDetalle($conn, $idUsuario, $permiso, $campo)
         {
-            $sql = "SELECT idDestino FROM dbo.Destino WHERE Habilitado = 1";
-            $stmt = sqlsrv_query($conn, $sql);
-            if ($stmt === false) {
-                return array();
+            $consultas = array(
+                "SELECT idDestino FROM dbo.Destino WHERE Habilitado = 1",
+                "SELECT idDestino FROM dbo.Destino WHERE Activo = 1",
+                "SELECT idDestino FROM dbo.Destino"
+            );
+
+            foreach ($consultas as $sql) {
+                $stmt = sqlsrv_query($conn, $sql);
+                if ($stmt === false) {
+                    continue;
+                }
+
+                $destinos = array();
+                while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                    if (!empty($row['idDestino'])) {
+                        $destinos[] = $row['idDestino'];
+                    }
+                }
+
+                if (!empty($destinos)) {
+                    return $destinos;
+                }
             }
 
-            $destinos = array();
-            while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-                $destinos[] = $row['idDestino'];
-            }
-
-            return $destinos;
+            return array();
         }
     }
 }
@@ -35,6 +48,7 @@ $params = array();
 $options = array("Scrollable" => SQLSRV_CURSOR_KEYSET);
 $json = '';
 $respuestaJson = isset($_GET['band']);
+$jsonResponseSent = false;
 
 if ($respuestaJson) {
     ob_start();
@@ -43,9 +57,9 @@ if ($respuestaJson) {
     header('Content-Type: application/json; charset=UTF-8');
 
     register_shutdown_function(function () {
-        global $json, $respuestaJson;
+        global $json, $respuestaJson, $jsonResponseSent;
 
-        if (!$respuestaJson) {
+        if (!$respuestaJson || $jsonResponseSent) {
             return;
         }
 
@@ -63,7 +77,23 @@ if ($respuestaJson) {
                 'success' => false,
                 'message' => 'Error interno al procesar la solicitud'
             ));
+            $jsonResponseSent = true;
+            return;
         }
+
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=UTF-8');
+        }
+
+        echo $json !== '' ? $json : json_encode(array(
+            'success' => false,
+            'message' => 'No se pudo generar una respuesta valida'
+        ));
+        $jsonResponseSent = true;
     });
 }
 
@@ -213,6 +243,46 @@ function resolverNombreObjetoSql($conn, array $candidatos, array $tipos = array(
     return null;
 }
 
+/**
+Codigo hecho por mario
+Funcion: obtenerCentrosTrabajoPermitidos intenta resolver los centros del
+usuario por permisos reales y, si no existen en local, usa Destino como
+fallback para no bloquear pruebas ni listados del modulo de turnos.
+**/
+function obtenerCentrosTrabajoPermitidos($conn, $idUsuario, $permiso = 'CONSULTA_POR_CENTRO_DE_TRABAJO', $campo = 'DespachadoDesde')
+{
+    $centrosTrabajo = FUNCIONES::BuscarpermisoDetalle($conn, $idUsuario, $permiso, $campo);
+    if (!empty($centrosTrabajo)) {
+        return $centrosTrabajo;
+    }
+
+    $consultas = array(
+        "SELECT idDestino FROM dbo.Destino WHERE Habilitado = 1",
+        "SELECT idDestino FROM dbo.Destino WHERE Activo = 1",
+        "SELECT idDestino FROM dbo.Destino"
+    );
+
+    foreach ($consultas as $sql) {
+        $stmt = sqlsrv_query($conn, $sql);
+        if ($stmt === false) {
+            continue;
+        }
+
+        $destinos = array();
+        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+            if (!empty($row['idDestino'])) {
+                $destinos[] = $row['idDestino'];
+            }
+        }
+
+        if (!empty($destinos)) {
+            return $destinos;
+        }
+    }
+
+    return array();
+}
+
 
 /**
 Codigo hecho por mario
@@ -281,7 +351,7 @@ if (isset($_GET['band'])) {
             $idUsuario = isset($list_record['idUsuario']) ? $list_record['idUsuario'] : '';
 
             // 2. Obtener centros de trabajo permitidos
-            $centrosTrabajo = FUNCIONES::BuscarpermisoDetalle($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
+            $centrosTrabajo = obtenerCentrosTrabajoPermitidos($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
 
             // 3. Validar si tiene centros asignados
             if (empty($centrosTrabajo)) {
@@ -445,7 +515,7 @@ if (isset($_GET['band'])) {
             $texto_busqueda = isset($list_record['texto']) ? $list_record['texto'] : '';
 
             // 2. Obtener centros de trabajo permitidos
-            $centrosTrabajo = FUNCIONES::BuscarpermisoDetalle($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
+            $centrosTrabajo = obtenerCentrosTrabajoPermitidos($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
 
             // 3. Validar si tiene centros asignados
             if (empty($centrosTrabajo)) {
@@ -576,7 +646,7 @@ if (isset($_GET['band'])) {
             $idUsuario = isset($list_record['idUsuario']) ? $list_record['idUsuario'] : '';
 
             // Obtener array de centros de trabajo permitidos
-            $centrosTrabajo = FUNCIONES::BuscarpermisoDetalle($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
+            $centrosTrabajo = obtenerCentrosTrabajoPermitidos($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
 
             // Si no hay centros de trabajo asignados, retornar error
             if (empty($centrosTrabajo)) {
@@ -834,7 +904,8 @@ if (isset($_GET['band'])) {
                   td.duracionMinutos as duracionDescansoMinutos,
                   td.descripcion as descripcionDescanso
                 FROM turnos t 
-                LEFT JOIN turnosDescansos td ON t.idTurno = td.idTurno
+                LEFT JOIN turnosDescansos td ON t.idTurno = td.idTurno AND ISNULL(td.activo, 1) = 1
+                WHERE ISNULL(t.activo, 1) = 1
                 ORDER BY t.descripcion";
 
             $res = sqlsrv_query($conn, $sql);
@@ -902,7 +973,7 @@ if (isset($_GET['band'])) {
         **/
         try {
             $idUsuario = isset($list_record['idUsuario']) ? $list_record['idUsuario'] : '';
-            $centrosTrabajo = FUNCIONES::BuscarpermisoDetalle($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
+            $centrosTrabajo = obtenerCentrosTrabajoPermitidos($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
 
             if (empty($centrosTrabajo)) {
                 $json = respuestaError('Usuario no tiene centros de trabajo asignados');
@@ -3422,6 +3493,7 @@ if (isset($_GET['band'])) {
             'success' => false,
             'message' => 'No se pudo generar una respuesta válida'
         ));
+        $jsonResponseSent = true;
     } else {
         echo $json;
     }

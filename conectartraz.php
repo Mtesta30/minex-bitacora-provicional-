@@ -1,9 +1,9 @@
 <?php
-$Servidor = "10.0.0.4";
+$Servidor = "localhost\SQLEXPRESS";
 $connectionInfo = [
     "Database" => "Traz",
-    "UID" => "Soporte_2026",
-    "PWD" => "Soporte.2026*",
+    "UID" => "Sa",
+    "PWD" => "123456",
     "TrustServerCertificate" => true,
     "Encrypt" => false
 ];

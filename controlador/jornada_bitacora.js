@@ -18,6 +18,14 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+function datalistTieneOpcionPorValor(datalistElement, valor) {
+    if (!datalistElement) {
+        return false;
+    }
+
+    return Array.from(datalistElement.options).some(option => option.value === valor);
+}
+
 function sincronizarCheckboxesUsuarios() {
     document.querySelectorAll('#tabla_usuarios_multiple input[name="usuarios[]"]').forEach(checkbox => {
         checkbox.checked = usuariosSeleccionados.has(checkbox.value);
@@ -291,6 +299,7 @@ function inicializarTablaTurnosCreados() {
 document.addEventListener("DOMContentLoaded", () => {
     list_Centro("");
     list_Centrotrabajo("");
+    list_Centrotrabajo("", "asignar");
     list_Usuario("");
     list_Actividad("");
     list_Negocio("");
@@ -2169,10 +2178,10 @@ function list_CentroTrabajoEdit() {
         .then(data => {
             const centros = normalizarRespuestaLista(data);
             centros.forEach(item => {
-                const option = document.createElement('option');
-                option.value = item.name;
-                option.setAttribute('data-id', item.id);
-                list_Centro.appendChild(option);
+            const option = document.createElement('option');
+            option.value = item.name;
+            option.setAttribute('data-id', item.id);
+            list_Centro.appendChild(option);
             });
         })
         .catch(error => {
@@ -2293,7 +2302,7 @@ async function list_Centro(object) {
         json_parse.forEach((json) => {
             let id = json['id'];
             let name = json['name'];
-            if (!list_Centro.querySelector(`option[value="${name}"]`)) {
+            if (!datalistTieneOpcionPorValor(list_Centro, name)) {
                 const nuevaOpcion = document.createElement('option');
                 nuevaOpcion.value = name;
                 nuevaOpcion.setAttribute('data-id', id); // Agrega el atributo data-id
@@ -2319,7 +2328,7 @@ async function list_CentrotrabajoBio(object) {
         json_parse.forEach((json) => {
             let id = json['id'];
             let name = json['name'];
-            if (!list_Centro.querySelector(`option[value="${name}"]`)) {
+            if (!datalistTieneOpcionPorValor(list_Centro, name)) {
                 const nuevaOpcion = document.createElement('option');
                 nuevaOpcion.value = name;
                 nuevaOpcion.setAttribute('data-id', id);
@@ -2648,7 +2657,7 @@ async function list_Centrotrabajo(object, contexto = 'consulta') {
             // Si hay múltiples registros
             const fragment = document.createDocumentFragment();
             data.data.forEach(({ id, name }) => {
-                if (!list_Centro.querySelector(`option[value="${name}"]`)) {
+                if (!datalistTieneOpcionPorValor(list_Centro, name)) {
                     const option = document.createElement('option');
                     option.value = name;
                     option.setAttribute('data-id', id);
@@ -2669,8 +2678,10 @@ async function list_Centrotrabajo(object, contexto = 'consulta') {
         alertify.error('Error al cargar los centros de trabajo');
 
         // Restablecer elementos en caso de error
-        const list_Centro = document.getElementById("list_Centrotrabajo");
-        const inputCentro = document.getElementById("CentroTrabajo");
+        const inputId = contexto === 'asignar' ? "CentroTrabajo_asignar" : "CentroTrabajo_consulta";
+        const datalistId = contexto === 'asignar' ? "list_Centrotrabajo_asignar" : "list_Centrotrabajo_consulta";
+        const list_Centro = document.getElementById(datalistId);
+        const inputCentro = document.getElementById(inputId);
 
         if (list_Centro) {
             list_Centro.innerHTML = '<option value="">Error al cargar centros de trabajo</option>';
