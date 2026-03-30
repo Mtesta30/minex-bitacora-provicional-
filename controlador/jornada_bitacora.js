@@ -150,6 +150,7 @@ function crearControlesTabla(selector, opciones = {}) {
                 <option value="100">100</option>
             </select>
             <label style="font-weight:600; margin-left:8px;">entries</label>
+            ${opciones.enableExportButtons ? '<button type="button" class="btn btn-success btn-sm" data-role="excel" style="margin-left:12px;">Excel</button><button type="button" class="btn btn-default btn-sm" data-role="print" style="margin-left:6px;">Print</button>' : ''}
         </div>
         <div class="col-xs-12 col-sm-6 text-right">
             <label style="font-weight:600; margin-right:8px;">Search:</label>
@@ -182,6 +183,8 @@ function crearControlesTabla(selector, opciones = {}) {
     const inputSearch = topControls.querySelector('input');
     const info = bottomControls.querySelector('[data-role="info"]');
     const pagination = bottomControls.querySelector('[data-role="pagination"]');
+    const excelButton = topControls.querySelector('[data-role="excel"]');
+    const printButton = topControls.querySelector('[data-role="print"]');
 
     const state = {
         page: 1,
@@ -189,7 +192,8 @@ function crearControlesTabla(selector, opciones = {}) {
         search: '',
         selector,
         filterSelector: opciones.filterSelector || null,
-        afterRender: opciones.afterRender || null
+        afterRender: opciones.afterRender || null,
+        exportTitle: opciones.exportTitle || 'tabla'
     };
 
     tablasPaginadas[key] = state;
@@ -289,15 +293,99 @@ function crearControlesTabla(selector, opciones = {}) {
         });
     }
 
-    function render() {
+    function obtenerFilasFiltradas() {
         const rows = obtenerFilasDatos();
-        const emptyRow = obtenerFilaVacia();
-
-        const filteredRows = rows.filter(row => {
+        return rows.filter(row => {
             const rowText = row.innerText.toLowerCase();
             const matchesSearch = !state.search || rowText.includes(state.search);
             return matchesSearch && cumpleFiltrosColumna(row);
         });
+    }
+
+    function obtenerEncabezados() {
+        return Array.from(table.querySelectorAll('thead tr:first-child th'))
+            .map(th => th.innerText.trim())
+            .filter(texto => texto !== '');
+    }
+
+    function exportarTablaExcel() {
+        const headers = obtenerEncabezados();
+        const filas = obtenerFilasFiltradas();
+        if (!filas.length) {
+            alertify.warning('No hay registros para exportar');
+            return;
+        }
+
+        let htmlTabla = '<table border="1"><thead><tr>';
+        headers.forEach(header => {
+            htmlTabla += `<th>${escapeHtml(header)}</th>`;
+        });
+        htmlTabla += '</tr></thead><tbody>';
+
+        filas.forEach(fila => {
+            const celdas = Array.from(fila.querySelectorAll('td')).slice(0, headers.length);
+            htmlTabla += '<tr>';
+            celdas.forEach(celda => {
+                htmlTabla += `<td>${escapeHtml(celda.innerText.trim())}</td>`;
+            });
+            htmlTabla += '</tr>';
+        });
+
+        htmlTabla += '</tbody></table>';
+
+        const contenido = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"></head><body>${htmlTabla}</body></html>`;
+        const blob = new Blob([contenido], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+        const enlace = document.createElement('a');
+        enlace.href = URL.createObjectURL(blob);
+        enlace.download = `${state.exportTitle}.xls`;
+        document.body.appendChild(enlace);
+        enlace.click();
+        document.body.removeChild(enlace);
+        URL.revokeObjectURL(enlace.href);
+    }
+
+    function imprimirTabla() {
+        const headers = obtenerEncabezados();
+        const filas = obtenerFilasFiltradas();
+        if (!filas.length) {
+            alertify.warning('No hay registros para imprimir');
+            return;
+        }
+
+        let htmlTabla = '<table border="1" cellspacing="0" cellpadding="6" style="width:100%; border-collapse:collapse;"><thead><tr>';
+        headers.forEach(header => {
+            htmlTabla += `<th>${escapeHtml(header)}</th>`;
+        });
+        htmlTabla += '</tr></thead><tbody>';
+
+        filas.forEach(fila => {
+            const celdas = Array.from(fila.querySelectorAll('td')).slice(0, headers.length);
+            htmlTabla += '<tr>';
+            celdas.forEach(celda => {
+                htmlTabla += `<td>${escapeHtml(celda.innerText.trim())}</td>`;
+            });
+            htmlTabla += '</tr>';
+        });
+
+        htmlTabla += '</tbody></table>';
+
+        const ventana = window.open('', '_blank');
+        if (!ventana) {
+            alertify.error('No se pudo abrir la ventana de impresión');
+            return;
+        }
+
+        ventana.document.write(`<html><head><title>${escapeHtml(state.exportTitle)}</title><meta charset="UTF-8"></head><body><h3>${escapeHtml(state.exportTitle)}</h3>${htmlTabla}</body></html>`);
+        ventana.document.close();
+        ventana.focus();
+        ventana.print();
+    }
+
+    function render() {
+        const rows = obtenerFilasDatos();
+        const emptyRow = obtenerFilaVacia();
+
+        const filteredRows = obtenerFilasFiltradas();
 
         const total = filteredRows.length;
         const totalPages = Math.max(1, Math.ceil(total / state.pageSize));
@@ -339,6 +427,14 @@ function crearControlesTabla(selector, opciones = {}) {
         state.page = 1;
         render();
     });
+
+    if (excelButton) {
+        excelButton.addEventListener('click', exportarTablaExcel);
+    }
+
+    if (printButton) {
+        printButton.addEventListener('click', imprimirTabla);
+    }
 
     if (state.filterSelector) {
         document.querySelectorAll(`${state.filterSelector} input, ${state.filterSelector} select`).forEach(control => {
@@ -2034,6 +2130,8 @@ async function cargarTurnosAsignados() {
 
         if (registros.length > 0) {
             $('#tabla_turnos_asignados').DataTable({
+                dom: 'Bfrtip',
+                buttons: ['excel', 'print'],
                 language: {
                     url: '//cdn.datatables.net/plug-ins/9dcbecd42ad/i18n/Spanish.json'
                 },
