@@ -627,7 +627,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     <div class="col-xs-2 col-sm-3 col-md-3 col-lg-3">
                         <label>Centro Trabajo:</label><br>
                         <input type="text" id="CentroTrabajo_asignar" list="list_Centrotrabajo_asignar" class="form-control"
-                            placeholder="Escriba un Centro de trabajo" onkeyup="list_Centrotrabajo(this, 'asignar')" />
+                            placeholder="Escriba un Centro de trabajo" onfocus="list_Centrotrabajo(this, 'asignar')" onkeyup="list_Centrotrabajo(this, 'asignar')" />
                         <datalist id="list_Centrotrabajo_asignar"></datalist>
                     </div>
                     <div class="col-xs-2 col-sm-2 col-md-2 col-lg-2">
@@ -772,7 +772,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                             <div class="col-md-4">
                                 <div class="form-group">
                                     <label for="edit_idCentroTrabajo">Centro de Trabajo:</label>
-                                    <input type="text" id="edit_idCentroTrabajo" list="list_CentroTrabajoEdit" class="form-control" placeholder="Seleccione un centro de trabajo" />
+                                    <input type="text" id="edit_idCentroTrabajo" list="list_CentroTrabajoEdit" class="form-control" placeholder="Seleccione un centro de trabajo" onfocus="list_CentroTrabajoEdit()" />
                                     <datalist id="list_CentroTrabajoEdit"></datalist>
                                 </div>
                             </div>

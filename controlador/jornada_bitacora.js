@@ -2,6 +2,8 @@ let turnosDisponibles = [];
 let turnoEnEdicionId = null;
 let turnoEdicionRequiresConfirmation = false;
 let tablasPaginadas = {};
+let centrosTrabajoDisponibles = [];
+let centrosTrabajoPromise = null;
 
 
 /**
@@ -24,6 +26,83 @@ function datalistTieneOpcionPorValor(datalistElement, valor) {
     }
 
     return Array.from(datalistElement.options).some(option => option.value === valor);
+}
+
+/**
+Codigo hecho por mario
+Funcion: normalizarRespuestaLista unifica respuestas antiguas y nuevas del
+backend para que los listados funcionen igual en local y produccion.
+**/
+function normalizarRespuestaLista(data) {
+    if (Array.isArray(data)) {
+        return data;
+    }
+
+    if (data && typeof data === 'object') {
+        if (Array.isArray(data.data)) {
+            return data.data;
+        }
+
+        if (data.success === false) {
+            throw new Error(data.message || 'No se pudo obtener la lista solicitada');
+        }
+    }
+
+    return [];
+}
+
+async function cargarCentrosTrabajoDisponibles(force = false) {
+    if (!force && Array.isArray(centrosTrabajoDisponibles) && centrosTrabajoDisponibles.length > 0) {
+        return centrosTrabajoDisponibles;
+    }
+
+    if (!force && centrosTrabajoPromise) {
+        return centrosTrabajoPromise;
+    }
+
+    centrosTrabajoPromise = fetch('../modelo/jornada_bitacora.php?band=get_CentrosDeTrabajo', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ idUsuario: id_usuario, texto_Centro: "" })
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Error en la conexión al cargar centros de trabajo');
+            }
+            return response.json();
+        })
+        .then(data => {
+            const centros = normalizarRespuestaLista(data);
+            centrosTrabajoDisponibles = Array.isArray(centros) ? centros : [];
+            return centrosTrabajoDisponibles;
+        })
+        .finally(() => {
+            centrosTrabajoPromise = null;
+        });
+
+    return centrosTrabajoPromise;
+}
+
+function renderizarOpcionesCentroTrabajo(listElement, centrosFiltrados) {
+    if (!listElement) {
+        return;
+    }
+
+    listElement.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+
+    centrosFiltrados.forEach(({ id, name }) => {
+        if (!datalistTieneOpcionPorValor(listElement, name)) {
+            const option = document.createElement('option');
+            option.value = name;
+            option.setAttribute('data-id', id);
+            fragment.appendChild(option);
+        }
+    });
+
+    listElement.appendChild(fragment);
 }
 
 function sincronizarCheckboxesUsuarios() {
@@ -747,6 +826,29 @@ function llenarSelectTurnosAsignados(selectedTurnoId) {
     });
 
     actualizarHorasTurnoSeleccionado();
+}
+
+async function asegurarTurnosDisponibles() {
+    if (Array.isArray(turnosDisponibles) && turnosDisponibles.length > 0) {
+        return turnosDisponibles;
+    }
+
+    const response = await fetch('../modelo/jornada_bitacora.php?band=get_TurnosDescansos');
+    if (!response.ok) {
+        throw new Error('No se pudieron cargar los turnos disponibles');
+    }
+
+    const data = await response.json();
+    if (data && Object.prototype.hasOwnProperty.call(data, 'success')) {
+        if (!data.success) {
+            throw new Error(data.message || 'No se pudieron cargar los turnos disponibles');
+        }
+        turnosDisponibles = data.data || [];
+    } else {
+        turnosDisponibles = data || [];
+    }
+
+    return turnosDisponibles;
 }
 
 function actualizarHorasTurnoSeleccionado() {
@@ -2096,7 +2198,7 @@ async function editarProgramacionTurno(idProgramacion) {
 }
 
 // Función para mostrar modal de edición con los datos cargados
-function mostrarModalEdicion(programacion) {
+async function mostrarModalEdicion(programacion) {
     try {
         // Acceder a los elementos solo después de que el modal esté completamente visible
         const idProgramacionEl = document.getElementById('edit_idProgramacion');
@@ -2117,6 +2219,8 @@ function mostrarModalEdicion(programacion) {
         nombreUsuarioEl.value = programacion.nombreUsuario || '';
         fechaInicioEl.value = programacion.fechaInicio || '';
         fechaFinEl.value = programacion.fechaFin || '';
+
+        await asegurarTurnosDisponibles();
 
         const detalles = programacion.detallesTurno || [];
         const turnoSeleccionado = detalles.length ? detalles[0].idTurnoRaw : (turnosDisponibles[0]?.id || '');
@@ -2669,7 +2773,7 @@ async function list_Centrotrabajo(object, contexto = 'consulta') {
             // Habilitar el input para selección
             inputCentro.disabled = false;
             inputCentro.classList.remove('bg-light');
-            inputCentro.value = ''; // Limpiar valor previo
+            inputCentro.value = texto_Centro;
             inputCentro.title = 'Seleccione un centro de trabajo';
         }
 
@@ -2689,6 +2793,78 @@ async function list_Centrotrabajo(object, contexto = 'consulta') {
         if (inputCentro) {
             inputCentro.disabled = false;
             inputCentro.value = '';
+            inputCentro.classList.remove('bg-light');
+        }
+    }
+}
+
+function list_CentroTrabajoEdit() {
+    const list_Centro = document.getElementById("list_CentroTrabajoEdit");
+    if (!list_Centro) {
+        console.error('No se encontró el elemento list_CentroTrabajoEdit');
+        return;
+    }
+
+    cargarCentrosTrabajoDisponibles()
+        .then(centros => {
+            renderizarOpcionesCentroTrabajo(list_Centro, centros);
+        })
+        .catch(error => {
+            console.error('Error al cargar los centros de trabajo:', error);
+        });
+}
+
+async function list_Centrotrabajo(object, contexto = 'consulta') {
+    try {
+        if (contexto === 'consulta') {
+            $('#ButtonCancelar').hide();
+            document.getElementById("idActividad").value = "";
+            document.getElementById("Descripcion").value = "";
+            document.getElementById("fecha_ini").value = "";
+            $('#idTiquete').find('option').remove();
+
+            $('#button')
+                .attr('onclick', 'save();')
+                .removeClass('btn-warning')
+                .addClass('btn btn-primary')
+                .text('Guardar');
+        }
+
+        const inputId = contexto === 'asignar' ? "CentroTrabajo_asignar" : "CentroTrabajo_consulta";
+        const datalistId = contexto === 'asignar' ? "list_Centrotrabajo_asignar" : "list_Centrotrabajo_consulta";
+        const inputCentro = document.getElementById(inputId);
+        const list_Centro = document.getElementById(datalistId);
+
+        if (!list_Centro || !inputCentro) {
+            throw new Error(`Elementos necesarios no encontrados: ${inputId}, ${datalistId}`);
+        }
+
+        const textoCentro = (object && typeof object.value === 'string') ? object.value.trim() : '';
+        const centros = await cargarCentrosTrabajoDisponibles();
+        const centrosFiltrados = textoCentro
+            ? centros.filter(item => String(item.name || '').toLowerCase().includes(textoCentro.toLowerCase()))
+            : centros;
+
+        renderizarOpcionesCentroTrabajo(list_Centro, centrosFiltrados);
+
+        inputCentro.disabled = false;
+        inputCentro.classList.remove('bg-light');
+        inputCentro.value = textoCentro;
+        inputCentro.title = centrosFiltrados.length ? 'Seleccione un centro de trabajo' : 'No se encontraron centros de trabajo';
+    } catch (error) {
+        console.error('Error al cargar centros de trabajo:', error);
+        alertify.error(error.message || 'Error al cargar los centros de trabajo');
+
+        const inputId = contexto === 'asignar' ? "CentroTrabajo_asignar" : "CentroTrabajo_consulta";
+        const datalistId = contexto === 'asignar' ? "list_Centrotrabajo_asignar" : "list_Centrotrabajo_consulta";
+        const list_Centro = document.getElementById(datalistId);
+        const inputCentro = document.getElementById(inputId);
+
+        if (list_Centro) {
+            list_Centro.innerHTML = '';
+        }
+        if (inputCentro) {
+            inputCentro.disabled = false;
             inputCentro.classList.remove('bg-light');
         }
     }
@@ -2772,12 +2948,24 @@ async function list_Usuario_asignar(object) {
 } */
 
 function format_mulsipleselect() {
-    $(function () {
-        $('#dias_laborales').change(function () {
-            //  console.log($(this).val());
-        }).multipleSelect({
-            width: '100%'
-        });
+    const $diasLaborales = $('#dias_laborales');
+
+    if (!$diasLaborales.length) {
+        return;
+    }
+
+    if ($diasLaborales.data('multipleSelect')) {
+        $diasLaborales.multipleSelect('destroy');
+    }
+
+    $diasLaborales.off('change.diasLaborales');
+    $diasLaborales.on('change.diasLaborales', function () {
+        // Punto de extensión para reacciones futuras al cambio.
+    });
+
+    $diasLaborales.multipleSelect({
+        width: '100%',
+        placeholder: 'Seleccione días laborales'
     });
     $('#contenedor').hide();
 }

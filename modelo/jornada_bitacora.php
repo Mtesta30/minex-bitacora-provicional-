@@ -343,12 +343,13 @@ if (isset($_GET['band'])) {
 
     if ($_GET['band'] == 'get_ConsultaCentroTrabajo') {
         try {
-            $centroTrabajo = isset($list_record['idCentroTrabajo']) ? ENCR::descript($list_record['idCentroTrabajo']) : null;
+            $centroTrabajo = isset($list_record['idCentroTrabajo']) ? resolverIdentificadorEntrada($list_record['idCentroTrabajo']) : null;
             $fechaInicial = $list_record['fechaInicial'];
             $fechaFinal = $list_record['fechaFinal'];
             $cargo = $list_record['cargo'];
             $usuario = isset($list_record['usuario']) ? ENCR::descript($list_record['usuario']) : null;
             $idUsuario = isset($list_record['idUsuario']) ? $list_record['idUsuario'] : '';
+            $textoCentro = isset($list_record['texto_Centro']) ? trim($list_record['texto_Centro']) : '';
 
             // 2. Obtener centros de trabajo permitidos
             $centrosTrabajo = obtenerCentrosTrabajoPermitidos($conn, $idUsuario, 'CONSULTA_POR_CENTRO_DE_TRABAJO', 'DespachadoDesde');
@@ -658,10 +659,18 @@ if (isset($_GET['band'])) {
             $sql = "SELECT idDestino, Descripcion 
                 FROM Destino
                 WHERE idDestino IN (" . implode(',', array_fill(0, count($centrosTrabajo), '?')) . ")
-                ORDER BY Descripcion";
+                ";
 
             // Preparar los parámetros con los IDs de centros de trabajo
+            if ($textoCentro !== '') {
+                $sql .= " AND Descripcion LIKE ?";
+            }
+            $sql .= " ORDER BY Descripcion";
+
             $params = $centrosTrabajo;
+            if ($textoCentro !== '') {
+                $params[] = '%' . $textoCentro . '%';
+            }
             $stmt = sqlsrv_query($conn, $sql, $params);
 
             if ($stmt === false) {
@@ -672,8 +681,8 @@ if (isset($_GET['band'])) {
 
             $data = [];
             while ($aa = sqlsrv_fetch_array($stmt)) {
-                $idDestino = ENCR::encript($aa['idDestino']);
-                $Descripcion = utf8_encode($aa['Descripcion']);
+                $idDestino = $aa['idDestino'];
+                $Descripcion = normalizarTextoSalida($aa['Descripcion']);
                 $registro = array('id' => $idDestino, 'name' => $Descripcion);
                 array_push($data, $registro);
             }
@@ -1041,7 +1050,7 @@ if (isset($_GET['band'])) {
     if ($_GET['band'] == 'save_programacion_turnos') {
         try {
             // Recibir los datos enviados en formato JSON y procesarlos usando list_record
-            $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? ENCR::descript($list_record['idCentroTrabajo']) : null;
+            $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? resolverIdentificadorEntrada($list_record['idCentroTrabajo']) : null;
             $idTurno = $list_record['idTurno'];
             $fechaInicio = $list_record['fechaInicio'];
             $fechaFin = $list_record['fechaFin'];
@@ -1500,7 +1509,7 @@ if (isset($_GET['band'])) {
         **/
         try {
             $idProgramacion = isset($list_record['idProgramacion']) ? resolverIdentificadorEntrada($list_record['idProgramacion']) : null;
-            $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? ENCR::descript($list_record['idCentroTrabajo']) : null;
+            $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? resolverIdentificadorEntrada($list_record['idCentroTrabajo']) : null;
             $fechaInicio = isset($list_record['fechaInicio']) ? $list_record['fechaInicio'] : null;
             $fechaFin = isset($list_record['fechaFin']) ? $list_record['fechaFin'] : null;
             $idTurno = isset($list_record['idTurno']) ? $list_record['idTurno'] : null;
@@ -1836,7 +1845,7 @@ if (isset($_GET['band'])) {
         $dias_laborales = $list_record['dias_laborales'];
         $usuario = ENCR::descript($list_record['usuario']);
         $id_usuario_login = $list_record['id_usuario'];
-        $idcentroTrabajo = ENCR::descript($list_record['idcentroTrabajo']);
+        $idcentroTrabajo = resolverIdentificadorEntrada($list_record['idcentroTrabajo']);
         $bandera = 0;
         $array_dias = array();
         $cont = count($list_record["dias_laborales"]);
@@ -2180,7 +2189,7 @@ if (isset($_GET['band'])) {
         $json = "";
         $idBitacora = ($list_record['id_Bitacora'] == '') ? '00000000-0000-0000-0000-000000000000' : $list_record['id_Bitacora'];
         $idUsuario = ENCR::descript($list_record['idUsuario']);
-        $idcentroTrabajo = ENCR::descript($list_record['idCentroTrabajo']);
+        $idcentroTrabajo = resolverIdentificadorEntrada($list_record['idCentroTrabajo']);
         $idActividad = ENCR::descript($list_record['idActividad']);
         $idUnidadNegocio = ENCR::descript($list_record['idUnidadNegocio']);
         $horas_distribuir = $list_record['horas_distribuir'];
