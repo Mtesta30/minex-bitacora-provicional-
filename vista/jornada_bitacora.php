@@ -1,6 +1,28 @@
 <?php
 session_start();
-require_once '../../conectar.php';
+require_once dirname(__DIR__) . '/conectartraz.php';
+// require_once '../../conectar.php';
+
+// Usuario admin
+ $_SESSION['idUsuario'] = 'c9fa5447-4a96-4309-b6c3-4ffbbdee22fe'; // YUBER LOBO
+
+// Usuario de prueba
+// $_SESSION['idUsuario'] = '84db9cee-72aa-476a-a61b-fab16c5983af'; // INGRID VERONICA ACEVEDO CACERES
+
+//$_SESSION['idUsuario'] = 'E67D0C54-938B-421C-9D95-826E9AC4AD2C'; // JONATHAN BALAGUERA CARVAJALINO
+//$_SESSION['idUsuario'] = 'd8c916d4-7b13-40a7-ad8c-38bae6f76429'; // EMERSON JIMENEZ
+
+// Permisos del sistema
+$_SESSION['permisos_todos'] = array(
+    'REGISTRO_TAREAS' => true,
+    'REGISTRO_SUELDO' => true,
+    'CONSULTAS_DE_TAREAS' => true,
+    'CONSULTAR TODOS' => false,
+    'CONSULTA HORAS EXTRAS' => true,
+    'TURNOS' => true,
+    'CREAR_TURNOS' => true,
+    'ASIGNAR_TURNOS' => true
+);
 
 echo "<script>
 var id_usuario = '" . $_SESSION['idUsuario'] . "';
@@ -13,23 +35,24 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
 
 <head>
     <title>JORNADA BITACORA</title>
-    <script src="../../libreria/jquery-3.3.1.min.js"></script>
-    <script src="../../libreria/jquery.min.js" type="text/javascript"></script>
-    <link rel="stylesheet" type="text/css" href="../../libreria/bootstrap/css/bootstrap.css">
-    <link rel="stylesheet" type="text/css" href="../../libreria/alertifyjs/css/alertify.css">
-    <link rel="stylesheet" type="text/css" href="../../libreria/alertifyjs/css/themes/bootstrap.css">
-    <script src="../../libreria/bootstrap/js/bootstrap.js"></script>
-    <script src="../../libreria/alertifyjs/alertify.js"></script>
     <meta name="viewport" content="width=auto, initial-scale=0.8">
-    <link rel="icon" type="image/x-icon" href="../../../Logo.ico">
-    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
-    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
-    <script type="text/javascript" src="../controlador/jornada_bitacora.js"></script>
     <meta charset="UTF-8">
 
-    <link rel="stylesheet" href="../../css/multiple-select.css" />
-    <script src="../../js/multiple-select.js"></script>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+    <!-- AlertifyJS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/alertifyjs@1.13.1/build/css/alertify.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/alertifyjs@1.13.1/build/css/themes/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/alertifyjs@1.13.1/build/alertify.min.js"></script>
+
+    <!-- DataTables -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
@@ -37,55 +60,15 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
     <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
 
-    <style>
-        body {
-            background-color: #f8f9fa;
-        }
+    <!-- SweetAlert -->
+    <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
 
-        .container {
-            background-color: #fff;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.65);
-            width: 80% !important;
+    <!-- Multiple Select -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/multiple-select@1.5.2/dist/multiple-select.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/multiple-select@1.5.2/dist/multiple-select.min.js"></script>
 
-        }
-
-        a {
-            font-size: 18px;
-
-        }
-
-        h2 {
-            text-align: center;
-            color: #337ab7;
-        }
-
-        label {
-            font-weight: bold;
-        }
-
-        .form-control {
-            margin-bottom: 10px;
-        }
-
-        #div_tabla_turnos {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        #div_tabla_turnos table {
-            margin: 0 auto;
-        }
-    </style>
-    <style type="text/css">
-        #empresa {
-            width: 200px;
-            border-bottom: black;
-
-        }
-    </style>
+    <!-- Controlador -->
+    <script type="text/javascript" src="../controlador/jornada_bitacora.js?v=20260327-2"></script>
 </head>
 
 <body>
