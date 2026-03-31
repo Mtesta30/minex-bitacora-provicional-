@@ -1062,7 +1062,7 @@ async function iniciarEliminacionTurnoDefinicion(idTurno) {
             if (assignedList.length) {
                 messageParts.push(`Usuarios asignados: ${assignedList.join(', ')}`);
             }
-            swal('No se puede eliminar', messageParts.join('<br>'), 'error');
+            swal('No se puede eliminar', messageParts.join('\n'), 'error');
             return;
         }
 
@@ -2077,6 +2077,14 @@ async function cargarTurnosAsignados() {
         }
 
         const registros = data.data || [];
+
+        const empresasUnicas = [...new Set(registros.map(r => (r.empresa || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
+        let opcionesEmpresa = '<li><a href="#" class="emp-filter-opt" data-emp="">Todas</a></li>';
+        empresasUnicas.forEach(e => {
+            opcionesEmpresa += `<li><a href="#" class="emp-filter-opt" data-emp="${escapeHtml(e)}">${escapeHtml(e)}</a></li>`;
+        });
+
         let html = `
             <table id="tabla_turnos_asignados" class="table table-striped table-bordered table-hover">
                 <thead>
@@ -2084,6 +2092,16 @@ async function cargarTurnosAsignados() {
                         <th class="text-center">Nombre</th>
                         <th class="text-center">Cédula</th>
                         <th class="text-center">Cargo</th>
+                        <th class="text-center" style="white-space:nowrap;">Empresa
+                            <div class="dropdown" style="display:inline-block;margin-left:4px;">
+                                <button class="btn btn-default btn-xs dropdown-toggle" type="button" id="btn_emp_asignados" data-toggle="dropdown" title="Filtrar por empresa">
+                                    <span class="caret"></span>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-right" id="lista_emp_asignados" style="min-width:200px;padding:5px 0;">
+                                    ${opcionesEmpresa}
+                                </ul>
+                            </div>
+                        </th>
                         <th class="text-center">Fecha Inicio</th>
                         <th class="text-center">Fecha Fin</th>
                         <th class="text-center">Hora Inicio</th>
@@ -2095,13 +2113,14 @@ async function cargarTurnosAsignados() {
                 <tbody>`;
 
         if (registros.length === 0) {
-            html += '<tr><td colspan="9" class="text-center">No hay turnos asignados para mostrar</td></tr>';
+            html += '<tr><td colspan="10" class="text-center">No hay turnos asignados para mostrar</td></tr>';
         } else {
             registros.forEach(item => {
                 html += `<tr>
                     <td>${escapeHtml(item.nombre || '')}</td>
                     <td>${escapeHtml(item.cedula || '')}</td>
                     <td>${escapeHtml(item.cargo || 'NO ESPECIFICADO')}</td>
+                    <td>${escapeHtml(item.empresa || 'Sin empresa')}</td>
                     <td>${escapeHtml(item.fechaInicio || '')}</td>
                     <td>${escapeHtml(item.fechaFin || '')}</td>
                     <td>${escapeHtml(item.horaInicio || '')}</td>
@@ -2129,8 +2148,8 @@ async function cargarTurnosAsignados() {
         }
 
         if (registros.length > 0) {
-            $('#tabla_turnos_asignados').DataTable({
-                dom: 'Bfrtip',
+            const dt = $('#tabla_turnos_asignados').DataTable({
+                dom: 'lBfrtip',
                 buttons: ['excel', 'print'],
                 language: {
                     url: '//cdn.datatables.net/plug-ins/9dcbecd42ad/i18n/Spanish.json'
@@ -2139,8 +2158,22 @@ async function cargarTurnosAsignados() {
                 searching: true,
                 lengthMenu: [[10, 25, 50, -1], [10, 25, 50, 'Todos']],
                 pageLength: 10,
-                columnDefs: [{ orderable: false, targets: 8 }]
+                columnDefs: [{ orderable: false, targets: 9 }]
             });
+
+            const listaEmp = document.getElementById('lista_emp_asignados');
+            if (listaEmp) {
+                listaEmp.addEventListener('click', function (ev) {
+                    const link = ev.target.closest('.emp-filter-opt');
+                    if (!link) return;
+                    ev.preventDefault();
+                    const val = link.dataset.emp;
+                    const regex = val ? ('^' + val.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') : '';
+                    dt.column(3).search(regex, true, false).draw();
+                    const btn = document.getElementById('btn_emp_asignados');
+                    if (btn) btn.title = val ? ('Filtrando: ' + val) : 'Filtrar por empresa';
+                });
+            }
         }
     } catch (error) {
         console.error('Error al cargar turnos asignados:', error);
@@ -2277,9 +2310,8 @@ async function editarProgramacionTurno(idProgramacion) {
             // Asegurarse de que el modal esté disponible en el DOM antes de manipularlo
             const modal = $('#modalEditarTurno');
 
-            // Preparar el modal y mostrarlo
-            modal.on('shown.bs.modal', function () {
-                // Este código se ejecutará una vez que el modal esté completamente visible
+            // Preparar el modal y mostrarlo (one() para que el handler se ejecute solo una vez)
+            modal.one('shown.bs.modal', function () {
                 mostrarModalEdicion(data.data);
             });
 
@@ -2323,6 +2355,27 @@ async function mostrarModalEdicion(programacion) {
         const detalles = programacion.detallesTurno || [];
         const turnoSeleccionado = detalles.length ? detalles[0].idTurnoRaw : (turnosDisponibles[0]?.id || '');
         llenarSelectTurnosAsignados(turnoSeleccionado);
+
+        // Pre-seleccionar días laborales según el detalle de fechas
+        const mapDia = [6, 0, 1, 2, 3, 4, 5]; // getDay(): 0=Dom→sábado[6], 1=Lun→lunes[0], ...
+        const nombresDias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+        const diasEnUso = new Set();
+        detalles.forEach(d => {
+            const fecha = new Date(d.fecha + 'T00:00:00');
+            diasEnUso.add(nombresDias[mapDia[fecha.getDay()]]);
+        });
+        if ($.fn.multipleSelect) {
+            if ($('#edit_dias_laborales').data('multipleSelect')) {
+                $('#edit_dias_laborales').multipleSelect('destroy');
+            }
+            $('#edit_dias_laborales').multipleSelect({ width: '100%', placeholder: 'Seleccione días laborales' });
+            if (diasEnUso.size > 0) {
+                $('#edit_dias_laborales').multipleSelect('setSelects', [...diasEnUso]);
+            } else {
+                $('#edit_dias_laborales').multipleSelect('uncheckAll');
+            }
+        }
+
         const warningText = document.getElementById('edit_warning_text');
         if (warningText) {
             warningText.textContent = `Este cambio afecta a ${programacion.nombreUsuario || 'el usuario asignado'}.`;
@@ -2426,6 +2479,10 @@ async function guardarCambiosProgramacion() {
         // Mostrar indicador de carga
         alertify.message('Guardando cambios...');
 
+        const diasLaboralesSeleccionados = $.fn.multipleSelect
+            ? ($('#edit_dias_laborales').multipleSelect('getSelects') || [])
+            : [];
+
         const response = await fetch('../modelo/jornada_bitacora.php?band=update_programacion_turno', {
             method: 'POST',
             headers: {
@@ -2437,6 +2494,7 @@ async function guardarCambiosProgramacion() {
                 fechaFin: fechaFin,
                 idCentroTrabajo: idCentroTrabajo,
                 idTurno: turnoSeleccionado,
+                diasLaborales: diasLaboralesSeleccionados,
                 confirmChanges: true
             })
         });

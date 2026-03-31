@@ -89,7 +89,7 @@ if ($respuestaJson) {
             header('Content-Type: application/json; charset=UTF-8');
         }
 
-        echo $json !== '' ? $json : json_encode(array(
+        echo ($json !== '' && $json !== false) ? $json : json_encode(array(
             'success' => false,
             'message' => 'No se pudo generar una respuesta valida'
         ));
@@ -117,11 +117,12 @@ function log_debug($mensaje, $datos = null)
 
 function respuestaExito($data, $message = 'Operación realizada correctamente')
 {
+    $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE;
     return json_encode(array(
         'success' => true,
         'message' => $message,
         'data' => $data
-    ));
+    ), $flags);
 }
 
 function respuestaError($message, $errors = null)
@@ -133,7 +134,8 @@ function respuestaError($message, $errors = null)
     if ($errors) {
         $response['errors'] = $errors;
     }
-    return json_encode($response);
+    $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE;
+    return json_encode($response, $flags);
 }
 
 function convertirMinutosHora($time)
@@ -532,12 +534,11 @@ if (isset($_GET['band'])) {
             $usarEmpresas = !empty($tablaUsuariosEmpresa) && !empty($tablaProveedores);
 
             if ($usarVistaCentroTrabajo) {
-                $sql = "SELECT TOP 10
+                $sql = "SELECT DISTINCT
                         v.idUsuario,
                         v.NombreCompleto,
                         v.Identificacion,
-                        v.Cargo,
-                        v.CentroTrabajo,";
+                        v.Cargo,";
 
                 if ($usarEmpresas) {
                     $sql .= "
@@ -559,12 +560,11 @@ if (isset($_GET['band'])) {
                     WHERE v.idCentroTrabajo IN (" . implode(',', array_fill(0, count($centrosTrabajo), '?')) . ")";
             } else {
                 $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'u');
-                $sql = "SELECT TOP 10
+                $sql = "SELECT DISTINCT
                         u.idUsuario,
                         u.NombreCompleto,
                         u.Identificacion,
-                        u.Cargo,
-                        '' AS CentroTrabajo,";
+                        u.Cargo,";
 
                 if ($usarEmpresas) {
                     $sql .= "
@@ -618,11 +618,11 @@ if (isset($_GET['band'])) {
             $data = [];
             while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
                 $registro = array(
-                    'id' => ENCR::encript($row['idUsuario']),
-                    'nombre' => utf8_encode($row['NombreCompleto']),
+                    'id' => $row['idUsuario'],
+                    'nombre' => normalizarTextoSalida($row['NombreCompleto']),
                     'cedula' => $row['Identificacion'],
                     'cargo' => $row['Cargo'],
-                    'empresa' => utf8_encode($row['Empresa'] ?? '')
+                    'empresa' => normalizarTextoSalida($row['Empresa'] ?? '')
                 );
                 array_push($data, $registro);
             }
@@ -808,10 +808,14 @@ if (isset($_GET['band'])) {
                     $codigo = 5; // Error turno duplicado
                 }
 
-                $json = respuestaError(
-                    'Error al crear turno: ' . $errorMessage,
-                    array('code' => $errorCode)
-                );
+                if ($errorCode === 5) {
+                    $json = respuestaError('Ya existe un turno con ese horario', array('code' => 5));
+                } else {
+                    $json = respuestaError(
+                        'Error al crear turno: ' . $errorMessage,
+                        array('code' => $errorCode)
+                    );
+                }
             }
         } catch (Exception $e) {
             // log_debug("Error en save_turno", array('error' => $e->getMessage()));
@@ -991,11 +995,31 @@ if (isset($_GET['band'])) {
 
             $placeholders = implode(',', array_fill(0, count($centrosTrabajo), '?'));
             $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'VU');
+            $tablaUsuariosEmpresa = resolverNombreObjetoSql($conn, array('dbo.UsuariosEmpresa', 'dbo.usuariosempresa'), array('U'));
+            $tablaProveedores = resolverNombreObjetoSql($conn, array('dbo.Proveedores', 'dbo.proveedores'), array('U'));
+            $usarEmpresas = !empty($tablaUsuariosEmpresa) && !empty($tablaProveedores);
+
+            if ($usarEmpresas) {
+                $joinEmpresa = "LEFT JOIN (
+                        SELECT idUsuario, MIN(idEmpresa) AS idEmpresa
+                        FROM {$tablaUsuariosEmpresa}
+                        GROUP BY idUsuario
+                    ) UE ON PT.idUsuario = UE.idUsuario
+                    LEFT JOIN {$tablaProveedores} PROV ON UE.idEmpresa = PROV.idProveedor AND PROV.empresa = 1";
+                $selectEmpresa = "ISNULL(MAX(PROV.RazonSocial), '') AS empresa";
+                $groupEmpresa = "";
+            } else {
+                $joinEmpresa = "";
+                $selectEmpresa = "'' AS empresa";
+                $groupEmpresa = "";
+            }
+
             $sql = "SELECT
                     PT.idProgramacion,
                     VU.NombreCompleto AS nombre,
                     VU.Identificacion AS cedula,
                     VU.Cargo AS cargo,
+                    {$selectEmpresa},
                     CONVERT(VARCHAR(10), MIN(PTD.fechaInicio), 23) AS fechaInicio,
                     CONVERT(VARCHAR(10), MAX(PTD.fechaFin), 23) AS fechaFin,
                     CONVERT(VARCHAR(5), T.horaInicio, 108) AS horaInicio,
@@ -1006,6 +1030,7 @@ if (isset($_GET['band'])) {
                 INNER JOIN ProgramacionTurnosDetalle PTD ON PT.idProgramacion = PTD.idProgramacion
                 INNER JOIN Turnos T ON PTD.idTurno = T.idTurno
                 INNER JOIN {$fuenteUsuarios} ON PT.idUsuario = VU.idUsuario
+                {$joinEmpresa}
                 WHERE PT.activo = 1
                   AND PT.idCentroTrabajo IN ($placeholders)
                 GROUP BY
@@ -1031,6 +1056,7 @@ if (isset($_GET['band'])) {
                     'nombre' => normalizarTextoSalida($row['nombre']),
                     'cedula' => $row['cedula'],
                     'cargo' => normalizarTextoSalida($row['cargo'] ?? ''),
+                    'empresa' => normalizarTextoSalida($row['empresa'] ?? ''),
                     'fechaInicio' => $row['fechaInicio'],
                     'fechaFin' => $row['fechaFin'],
                     'horaInicio' => $row['horaInicio'],
@@ -1108,8 +1134,27 @@ if (isset($_GET['band'])) {
             // Procesar cada usuario seleccionado
             foreach ($usuarios as $idUsuarioEncriptado) {
                 try {
-                    // Desencriptar el ID del usuario
-                    $idUsuario = ENCR::descript($idUsuarioEncriptado);
+                    // Resolver el ID del usuario (acepta GUID directo o encriptado)
+                    $idUsuario = resolverIdentificadorEntrada($idUsuarioEncriptado);
+
+                    // Validar que el usuario no tenga ya este turno asignado activo
+                    $sqlDuplicado = "SELECT COUNT(*) AS cnt
+                        FROM ProgramacionTurnos PT
+                        INNER JOIN ProgramacionTurnosDetalle PTD ON PT.idProgramacion = PTD.idProgramacion
+                        WHERE PT.idUsuario = ? AND PT.activo = 1 AND PTD.idTurno = ?";
+                    $stmtDuplicado = sqlsrv_query($conn, $sqlDuplicado, array($idUsuario, $idTurno));
+                    if ($stmtDuplicado !== false) {
+                        $rowDup = sqlsrv_fetch_array($stmtDuplicado, SQLSRV_FETCH_ASSOC);
+                        if ($rowDup && $rowDup['cnt'] > 0) {
+                            $resultados[] = array(
+                                'idUsuario' => $idUsuarioEncriptado,
+                                'success' => false,
+                                'message' => 'El usuario ya tiene este turno asignado'
+                            );
+                            $fallidos++;
+                            continue;
+                        }
+                    }
 
                     // Ejecutar el procedimiento almacenado para asignar el turno al usuario
                     $sql = "EXEC  SAVE_ProgramacionTurnos 
@@ -1283,7 +1328,6 @@ if (isset($_GET['band'])) {
                             while ($rowTurno = sqlsrv_fetch_array($stmtTurnos, SQLSRV_FETCH_ASSOC)) {
                                 $detallesTurno[] = array(
                                     'fecha' => $rowTurno['fecha']->format('Y-m-d'),
-                                    'idTurno' => ENCR::encript($rowTurno['idTurno']),
                                     'idTurnoRaw' => $rowTurno['idTurno'],
                                     'descripcion' => $rowTurno['descripcion'],
                                     'horaInicio' => $rowTurno['horaInicio']->format('H:i:s'),
@@ -1293,9 +1337,9 @@ if (isset($_GET['band'])) {
                             }
 
                             $programacion = array(
-                                'idProgramacion' => ENCR::encript($row['idProgramacion']),
-                                'idUsuario' => ENCR::encript($row['idUsuario']),
-                                'idCentroTrabajo' => ENCR::encript($row['idCentroTrabajo']),
+                                'idProgramacion' => $row['idProgramacion'],
+                                'idUsuario' => $row['idUsuario'],
+                                'idCentroTrabajo' => $row['idCentroTrabajo'],
                                 'fechaInicio' => $row['fechaInicio']->format('Y-m-d'),
                                 'fechaFin' => $row['fechaFin']->format('Y-m-d'),
                                 'activo' => $row['activo'],
@@ -1513,6 +1557,14 @@ if (isset($_GET['band'])) {
             $fechaInicio = isset($list_record['fechaInicio']) ? $list_record['fechaInicio'] : null;
             $fechaFin = isset($list_record['fechaFin']) ? $list_record['fechaFin'] : null;
             $idTurno = isset($list_record['idTurno']) ? $list_record['idTurno'] : null;
+            $diasLaborales = isset($list_record['diasLaborales']) && is_array($list_record['diasLaborales']) ? $list_record['diasLaborales'] : array();
+            $mapaDias = array('lunes' => 1, 'martes' => 2, 'miércoles' => 3, 'jueves' => 4, 'viernes' => 5, 'sábado' => 6, 'domingo' => 7);
+            $numeroDias = array();
+            foreach ($diasLaborales as $d) {
+                if (isset($mapaDias[$d])) {
+                    $numeroDias[] = $mapaDias[$d];
+                }
+            }
 
             $fieldErrors = array();
             if (!$idProgramacion) {
@@ -1661,17 +1713,17 @@ if (isset($_GET['band'])) {
             $horaFinTurno = $turnoRow['horaFin']->format('H:i:s');
             $cruzaMedianoche = strcmp($horaFinTurno, $horaInicioTurno) < 0;
             while ($intervaloFecha <= $fechaFinObj) {
-                $fechaDetalleInicio = $intervaloFecha->format('Y-m-d');
-                $fechaDetalleFin = $cruzaMedianoche
-                    ? $intervaloFecha->add(new DateInterval('P1D'))->format('Y-m-d')
-                    : $fechaDetalleInicio;
-                if ($cruzaMedianoche) {
-                    $intervaloFecha->sub(new DateInterval('P1D'));
-                }
+                $diaSemana = intval($intervaloFecha->format('N')); // 1=lunes...7=domingo
+                if (empty($numeroDias) || in_array($diaSemana, $numeroDias)) {
+                    $fechaDetalleInicio = $intervaloFecha->format('Y-m-d');
+                    $fechaDetalleFin = $cruzaMedianoche
+                        ? (clone $intervaloFecha)->add(new DateInterval('P1D'))->format('Y-m-d')
+                        : $fechaDetalleInicio;
 
-                $sqlInsertDetalle = "INSERT INTO ProgramacionTurnosDetalle (idProgramacionDetalle, idProgramacion, fechaInicio, fechaFin, idTurno) VALUES (NEWID(), ?, ?, ?, ?)";
-                $paramsInsert = array($idProgramacion, $fechaDetalleInicio, $fechaDetalleFin, $idTurno);
-                sqlsrv_query($conn, $sqlInsertDetalle, $paramsInsert);
+                    $sqlInsertDetalle = "INSERT INTO ProgramacionTurnosDetalle (idProgramacionDetalle, idProgramacion, fechaInicio, fechaFin, idTurno) VALUES (NEWID(), ?, ?, ?, ?)";
+                    $paramsInsert = array($idProgramacion, $fechaDetalleInicio, $fechaDetalleFin, $idTurno);
+                    sqlsrv_query($conn, $sqlInsertDetalle, $paramsInsert);
+                }
                 $intervaloFecha->add(new DateInterval('P1D'));
             }
 

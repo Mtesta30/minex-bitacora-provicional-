@@ -801,6 +801,24 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
 
                         <div class="row">
                             <div class="col-md-12">
+                                <div class="form-group">
+                                    <label>Días laborales:</label>
+                                    <select name="edit_dias_laborales" id="edit_dias_laborales" class="form-control" multiple="multiple" style="text-align: left !important; border: 1px solid;">
+                                        <option value="lunes">Lunes</option>
+                                        <option value="martes">Martes</option>
+                                        <option value="miércoles">Miércoles</option>
+                                        <option value="jueves">Jueves</option>
+                                        <option value="viernes">Viernes</option>
+                                        <option value="sábado">Sábado</option>
+                                        <option value="domingo">Domingo</option>
+                                    </select>
+                                    <small class="text-muted">Si no selecciona ningún día, el turno aplica todos los días del rango.</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-12">
                                 <div id="edit_validation_messages" class="text-danger" style="min-height: 24px;"></div>
                                 <p class="text-warning">
                                     <small id="edit_warning_text">Este cambio afecta directamente al trabajador asignado.</small>
