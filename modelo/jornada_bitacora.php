@@ -183,6 +183,22 @@ function resolverIdentificadorEntrada($valor)
     return null;
 }
 
+function sanitizarTotal($valor)
+{
+    if ($valor === null) return null;
+    // Si es un objeto DateTime (SQL time devuelto por sqlsrv), formatearlo
+    if ($valor instanceof DateTime || $valor instanceof DateTimeImmutable) {
+        return $valor->format('H:i:s');
+    }
+    // Si es numérico, rechazar negativos o valores absurdos (>24 hrs o >1440 min)
+    if (is_numeric($valor)) {
+        $num = floatval($valor);
+        if ($num < 0 || $num > 1440) return null;
+        return $num;
+    }
+    return $valor;
+}
+
 function normalizarTextoSalida($valor)
 {
     if ($valor === null) {
@@ -412,13 +428,20 @@ if (isset($_GET['band'])) {
                 );
             } else {
 
-                $sql = "EXEC [dbo].[GET_ReporteJornadasLaborales] 
+                $sql = "EXEC [dbo].[GET_ReporteJornadasLaborales]
                 @FechaInicio = ?,
                 @FechaFin = ?,
                 @IdCentroTrabajo = ?,
                 @IdUsuario = ?,
                 @Cargo = ?";
-                $params = array($fechaInicial, $fechaFinal, $centroTrabajo, $usuario, $cargo);
+                $usuario = $usuario ?: null;
+                $params = array(
+                    $fechaInicial,
+                    $fechaFinal,
+                    array($centroTrabajo, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_UNIQUEIDENTIFIER),
+                    array($usuario,       SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_UNIQUEIDENTIFIER),
+                    $cargo
+                );
                 $res = sqlsrv_query($conn, $sql, $params);
 
                 if ($res === false) {
@@ -440,12 +463,12 @@ if (isset($_GET['band'])) {
                         'jornada' => $row['Jornada'],
                         'inicioJornada' => $row['1eraJornada.inicio']->format('H:i:s'),
                         'inicioReceso' => $row['1eraJornada.inicioreceso'] ? $row['1eraJornada.inicioreceso']->format('H:i:s') : null,
-                        'totalPrimeraJornada' => $row['1eraJornada.total'],
+                        'totalPrimeraJornada' => sanitizarTotal($row['1eraJornada.total']),
                         'finReceso' => $row['2daJornada.finreceso'] ? $row['2daJornada.finreceso']->format('H:i:s') : null,
                         'finJornada' => $row['2daJornada.final']->format('H:i:s'),
-                        'totalSegundaJornada' => $row['2daJornada.total'],
-                        'tiempoTotalTrabajado' => $row['horas.TiempoTotalTrabajado'],
-                        'sobretiempo' => $row['horas.Sobretiempo']
+                        'totalSegundaJornada' => sanitizarTotal($row['2daJornada.total']),
+                        'tiempoTotalTrabajado' => sanitizarTotal($row['horas.TiempoTotalTrabajado']),
+                        'sobretiempo' => sanitizarTotal($row['horas.Sobretiempo'])
                     );
 
                     $registros[] = $registro;
@@ -3542,6 +3565,215 @@ if (isset($_GET['band'])) {
         }
         $json = (json_encode($data));
         //$json = $fechaFin;
+    }
+
+    if ($_GET['band'] == 'get_CargosCentroTrabajo') {
+        try {
+            $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? resolverIdentificadorEntrada($list_record['idCentroTrabajo']) : null;
+            if (!$idCentroTrabajo) {
+                $json = respuestaExito(array(), 'Sin filtro de centro');
+            } else {
+                $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'VU');
+                $sql = "SELECT DISTINCT VU.Cargo
+                        FROM ProgramacionTurnos PT
+                        INNER JOIN {$fuenteUsuarios} ON PT.idUsuario = VU.idUsuario
+                        WHERE PT.idCentroTrabajo = ? AND PT.activo = 1
+                        AND VU.Cargo IS NOT NULL AND VU.Cargo <> ''
+                        ORDER BY VU.Cargo";
+                $res = sqlsrv_query($conn, $sql, array($idCentroTrabajo));
+                $data = array();
+                if ($res) {
+                    while ($row = sqlsrv_fetch_array($res, SQLSRV_FETCH_ASSOC)) {
+                        $cargo = normalizarTextoSalida($row['Cargo']);
+                        $data[] = array('id' => $cargo, 'name' => $cargo);
+                    }
+                }
+                $json = respuestaExito($data, 'Cargos obtenidos');
+            }
+        } catch (Exception $e) {
+            $json = respuestaError('Error: ' . $e->getMessage());
+        }
+    }
+
+    if ($_GET['band'] == 'get_UsuariosPorCentro') {
+        try {
+            $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? resolverIdentificadorEntrada($list_record['idCentroTrabajo']) : null;
+            $cargo = isset($list_record['cargo']) && !empty($list_record['cargo']) ? $list_record['cargo'] : null;
+            if (!$idCentroTrabajo) {
+                $json = respuestaExito(array(), 'Sin filtro de centro');
+            } else {
+                $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'VU');
+                $sql = "SELECT DISTINCT VU.idUsuario, VU.NombreCompleto, VU.Identificacion
+                        FROM ProgramacionTurnos PT
+                        INNER JOIN {$fuenteUsuarios} ON PT.idUsuario = VU.idUsuario
+                        WHERE PT.idCentroTrabajo = ? AND PT.activo = 1";
+                $params = array($idCentroTrabajo);
+                if ($cargo) {
+                    $sql .= " AND VU.Cargo = ?";
+                    $params[] = $cargo;
+                }
+                $sql .= " ORDER BY VU.NombreCompleto";
+                $res = sqlsrv_query($conn, $sql, $params);
+                $data = array();
+                if ($res) {
+                    while ($row = sqlsrv_fetch_array($res, SQLSRV_FETCH_ASSOC)) {
+                        $data[] = array(
+                            'id' => $row['idUsuario'],
+                            'name' => normalizarTextoSalida($row['NombreCompleto']),
+                            'cedula' => $row['Identificacion']
+                        );
+                    }
+                }
+                $json = respuestaExito($data, 'Usuarios obtenidos');
+            }
+        } catch (Exception $e) {
+            $json = respuestaError('Error: ' . $e->getMessage());
+        }
+    }
+
+    if ($_GET['band'] == 'get_datos_reporte_asistencia') {
+        try {
+            $idCentroTrabajo = isset($list_record['idCentroTrabajo']) ? resolverIdentificadorEntrada($list_record['idCentroTrabajo']) : null;
+            $fechaInicial = isset($list_record['fechaInicial']) ? $list_record['fechaInicial'] : null;
+            $fechaFinal   = isset($list_record['fechaFinal'])   ? $list_record['fechaFinal']   : null;
+
+            if (!$idCentroTrabajo || !$fechaInicial || !$fechaFinal) {
+                $json = respuestaError('Centro de trabajo y rango de fechas son requeridos');
+            } else {
+                $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'VU');
+
+                // 1. RAW DATA via SP
+                $rawData = array();
+                $resSP = sqlsrv_query($conn,
+                    "EXEC [dbo].[GET_ReporteJornadasLaborales] @FechaInicio=?, @FechaFin=?, @IdCentroTrabajo=?, @IdUsuario=NULL, @Cargo=NULL",
+                    array(
+                        $fechaInicial,
+                        $fechaFinal,
+                        array($idCentroTrabajo, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_UNIQUEIDENTIFIER)
+                    )
+                );
+                if ($resSP !== false) {
+                    while ($row = sqlsrv_fetch_array($resSP, SQLSRV_FETCH_ASSOC)) {
+                        $rawData[] = array(
+                            'fecha'         => $row['Fecha']->format('Y-m-d'),
+                            'diaSemana'     => normalizarTextoSalida($row['DiaSemana']),
+                            'cargo'         => normalizarTextoSalida($row['Cargo']),
+                            'nombre'        => normalizarTextoSalida($row['NombreTrabajador']),
+                            'cedula'        => $row['Cedula'],
+                            'jornada'       => normalizarTextoSalida($row['Jornada']),
+                            'inicioJornada' => isset($row['1eraJornada.inicio']) && $row['1eraJornada.inicio'] ? $row['1eraJornada.inicio']->format('H:i:s') : '00:00:00',
+                            'inicioReceso'  => isset($row['1eraJornada.inicioreceso']) && $row['1eraJornada.inicioreceso'] ? $row['1eraJornada.inicioreceso']->format('H:i:s') : null,
+                            'total1ra'      => sanitizarTotal($row['1eraJornada.total']),
+                            'finReceso'     => isset($row['2daJornada.finreceso']) && $row['2daJornada.finreceso'] ? $row['2daJornada.finreceso']->format('H:i:s') : null,
+                            'finJornada'    => isset($row['2daJornada.final']) && $row['2daJornada.final'] ? $row['2daJornada.final']->format('H:i:s') : '23:59:59',
+                            'total2da'      => sanitizarTotal($row['2daJornada.total']),
+                            'tiempoTotal'   => sanitizarTotal($row['horas.TiempoTotalTrabajado']),
+                            'sobretiempo'   => sanitizarTotal($row['horas.Sobretiempo'])
+                        );
+                    }
+                }
+
+                // 2. LISTADO empleados programados en el centro para el rango
+                $listado = array();
+                $resListado = sqlsrv_query($conn,
+                    "SELECT DISTINCT
+                        VU.Identificacion, VU.NombreCompleto, VU.Cargo,
+                        T.descripcion AS Jornada,
+                        D.Descripcion AS Area,
+                        ISNULL(P.RazonSocial, '') AS Director,
+                        ISNULL(UD.emailCorporativo, '') AS CorreoCorporativo
+                    FROM ProgramacionTurnos PT
+                    INNER JOIN {$fuenteUsuarios} ON PT.idUsuario = VU.idUsuario
+                    INNER JOIN ProgramacionTurnosDetalle PTD ON PT.idProgramacion = PTD.idProgramacion
+                    INNER JOIN Turnos T ON PTD.idTurno = T.idTurno
+                    INNER JOIN Destino D ON PT.idCentroTrabajo = D.idDestino
+                    LEFT JOIN Proveedores P ON D.idProveedor = P.idProveedor
+                    LEFT JOIN UsuariosDetalle UD ON VU.Identificacion = UD.Identificacion
+                    WHERE PT.idCentroTrabajo = ?
+                    AND PT.activo = 1
+                    AND PTD.fechaInicio <= ? AND PTD.fechaFin >= ?",
+                    array($idCentroTrabajo, $fechaFinal, $fechaInicial)
+                );
+                if ($resListado) {
+                    while ($row = sqlsrv_fetch_array($resListado, SQLSRV_FETCH_ASSOC)) {
+                        $listado[] = array(
+                            'cedula'   => $row['Identificacion'],
+                            'nombre'   => normalizarTextoSalida($row['NombreCompleto']),
+                            'cargo'    => normalizarTextoSalida($row['Cargo']),
+                            'jornada'  => normalizarTextoSalida($row['Jornada']),
+                            'area'     => normalizarTextoSalida($row['Area']),
+                            'director' => normalizarTextoSalida($row['Director']),
+                            'correo'   => normalizarTextoSalida($row['CorreoCorporativo'])
+                        );
+                    }
+                }
+
+                // 3. PROGRAMACION por empleado y fecha (para calcular tardanza)
+                $programacion = array();
+                $resProg = sqlsrv_query($conn,
+                    "SELECT
+                        VU.Identificacion AS Cedula,
+                        PTD.fechaInicio AS FechaInicio,
+                        PTD.fechaFin AS FechaFin,
+                        T.descripcion AS DescripcionTurno,
+                        FORMAT(CAST(T.horaInicio AS DATETIME), 'HH:mm:ss') AS HoraInicio,
+                        FORMAT(CAST(T.horaFin AS DATETIME), 'HH:mm:ss') AS HoraFin,
+                        FORMAT(CAST(TD.horaInicio AS DATETIME), 'HH:mm:ss') AS HoraInicioDescanso,
+                        FORMAT(CAST(TD.horaFin AS DATETIME), 'HH:mm:ss') AS HoraFinDescanso,
+                        CASE WHEN T.horaFin < T.horaInicio THEN 1 ELSE 0 END AS Nocturno
+                    FROM ProgramacionTurnosDetalle PTD
+                    INNER JOIN ProgramacionTurnos PT ON PTD.idProgramacion = PT.idProgramacion
+                    INNER JOIN Turnos T ON PTD.idTurno = T.idTurno
+                    INNER JOIN {$fuenteUsuarios} ON PT.idUsuario = VU.idUsuario
+                    LEFT JOIN TurnosDescansos TD ON T.idTurno = TD.idTurno AND TD.activo = 1
+                    WHERE PT.idCentroTrabajo = ?
+                    AND PTD.fechaInicio <= ? AND PTD.fechaFin >= ?
+                    AND PT.activo = 1",
+                    array($idCentroTrabajo, $fechaFinal, $fechaInicial)
+                );
+                if ($resProg) {
+                    while ($row = sqlsrv_fetch_array($resProg, SQLSRV_FETCH_ASSOC)) {
+                        $programacion[] = array(
+                            'cedula'            => $row['Cedula'],
+                            'fechaInicio'       => $row['FechaInicio']->format('Y-m-d'),
+                            'fechaFin'          => $row['FechaFin']->format('Y-m-d'),
+                            'jornada'           => normalizarTextoSalida($row['DescripcionTurno']),
+                            'horaInicio'        => $row['HoraInicio'],
+                            'horaFin'           => $row['HoraFin'],
+                            'horaInicioDescanso'=> $row['HoraInicioDescanso'],
+                            'horaFinDescanso'   => $row['HoraFinDescanso'],
+                            'nocturno'          => $row['Nocturno']
+                        );
+                    }
+                }
+
+                // 4. Info del centro de trabajo
+                $centroInfo = array('nombre' => '', 'empresa' => '');
+                $resCentro = sqlsrv_query($conn,
+                    "SELECT D.Descripcion, ISNULL(P.RazonSocial, '') AS Empresa
+                     FROM Destino D LEFT JOIN Proveedores P ON D.idProveedor = P.idProveedor
+                     WHERE D.idDestino = ?",
+                    array($idCentroTrabajo)
+                );
+                if ($resCentro && $rowC = sqlsrv_fetch_array($resCentro, SQLSRV_FETCH_ASSOC)) {
+                    $centroInfo = array(
+                        'nombre'  => normalizarTextoSalida($rowC['Descripcion']),
+                        'empresa' => normalizarTextoSalida($rowC['Empresa'])
+                    );
+                }
+
+                $json = respuestaExito(array(
+                    'rawData'     => $rawData,
+                    'listado'     => $listado,
+                    'programacion'=> $programacion,
+                    'centroInfo'  => $centroInfo,
+                    'fechaInicial'=> $fechaInicial,
+                    'fechaFinal'  => $fechaFinal
+                ), 'Datos de reporte obtenidos correctamente');
+            }
+        } catch (Exception $e) {
+            $json = respuestaError('Error al obtener datos: ' . $e->getMessage());
+        }
     }
 
     if ($respuestaJson) {

@@ -2803,7 +2803,7 @@ async function get_ConsultaCentroTrabajo() {
                 "searching": true,
                 "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "Todos"]],
                 "pageLength": 10,
-                "dom": 'Bfrtip',
+                "dom": 'frtip',
                 "buttons": [
                     'excel',
                     'pdf',
@@ -4823,3 +4823,567 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
 });
+
+// ============================================================
+// CONSULTA POR CENTRO DE TRABAJO - Filtros dinámicos y Excel
+// ============================================================
+
+async function cargarCargosCentroTrabajo() {
+    const centroTrabajo = get_data_id("CentroTrabajo_consulta", "list_Centrotrabajo_consulta");
+    const listCargo = document.getElementById('list_CargoMina');
+    const inputCargo = document.getElementById('CargoMina');
+    const listUsuario = document.getElementById('list_UsuarioMina');
+    const inputUsuario = document.getElementById('UsuarioMina');
+
+    listCargo.innerHTML = '';
+    inputCargo.value = '';
+    listUsuario.innerHTML = '';
+    inputUsuario.value = '';
+
+    if (!centroTrabajo) return;
+
+    try {
+        const response = await fetch('../modelo/jornada_bitacora.php?band=get_CargosCentroTrabajo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idCentroTrabajo: centroTrabajo })
+        });
+        const data = await response.json();
+        if (data.success && data.data.length > 0) {
+            data.data.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.name;
+                opt.setAttribute('data-id', item.id);
+                listCargo.appendChild(opt);
+            });
+        }
+        await cargarUsuariosCentroTrabajo();
+    } catch (e) {
+        console.error('Error cargando cargos:', e);
+    }
+}
+
+async function cargarUsuariosCentroTrabajo() {
+    const centroTrabajo = get_data_id("CentroTrabajo_consulta", "list_Centrotrabajo_consulta");
+    const cargo = document.getElementById('CargoMina').value.trim();
+    const listUsuario = document.getElementById('list_UsuarioMina');
+    const inputUsuario = document.getElementById('UsuarioMina');
+
+    listUsuario.innerHTML = '';
+    inputUsuario.value = '';
+
+    if (!centroTrabajo) return;
+
+    try {
+        const response = await fetch('../modelo/jornada_bitacora.php?band=get_UsuariosPorCentro', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idCentroTrabajo: centroTrabajo, cargo: cargo || null })
+        });
+        const data = await response.json();
+        if (data.success && data.data.length > 0) {
+            data.data.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item.name;
+                opt.setAttribute('data-id', item.id);
+                listUsuario.appendChild(opt);
+            });
+        }
+    } catch (e) {
+        console.error('Error cargando usuarios:', e);
+    }
+}
+
+// ---- Generación de reporte Excel ----
+
+async function generarReporteAsistencia() {
+    const centroTrabajo = get_data_id("CentroTrabajo_consulta", "list_Centrotrabajo_consulta");
+    const fechaInicial = document.getElementById("FechaInicialMina").value;
+    const fechaFinal = document.getElementById("FechaFinalMina").value;
+
+    if (!centroTrabajo) { alertify.error('Debe seleccionar un Centro de Trabajo'); return; }
+    if (!fechaInicial || !fechaFinal) { alertify.error('Debe seleccionar un rango de fechas válido'); return; }
+
+    const btn = document.getElementById('button_reporte_excel');
+    btn.disabled = true;
+    btn.textContent = 'Generando...';
+
+    try {
+        const response = await fetch('../modelo/jornada_bitacora.php?band=get_datos_reporte_asistencia', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idCentroTrabajo: centroTrabajo, fechaInicial, fechaFinal })
+        });
+        const result = await response.json();
+
+        if (!result.success) {
+            alertify.error(result.message || 'Error al obtener datos');
+            return;
+        }
+
+        const { rawData, listado, programacion, centroInfo } = result.data;
+
+        const wb = XLSX.utils.book_new();
+
+        XLSX.utils.book_append_sheet(wb, buildSheetDatosBrutos(rawData), 'Datos Brutos');
+        XLSX.utils.book_append_sheet(wb, buildSheetListadoEmpleados(listado), 'Listado Empleados');
+
+        const { sheetResultados, resumenPorEmpleado } = buildSheetResultados(
+            rawData, listado, programacion, fechaInicial, fechaFinal
+        );
+        XLSX.utils.book_append_sheet(wb, sheetResultados, 'Resultados');
+        XLSX.utils.book_append_sheet(wb, buildSheetExcepciones(resumenPorEmpleado), 'Excepciones');
+        XLSX.utils.book_append_sheet(wb, buildSheetNoMarco(resumenPorEmpleado), 'No Marco');
+        XLSX.utils.book_append_sheet(wb, buildSheetInforme(resumenPorEmpleado, centroInfo, fechaInicial, fechaFinal), 'Informe');
+
+        const nombreCentro = centroInfo.nombre ? centroInfo.nombre.replace(/[^a-zA-Z0-9]/g, '_') : 'Centro';
+        XLSX.writeFile(wb, `Reporte_Asistencia_${nombreCentro}_${fechaInicial}_${fechaFinal}.xlsx`);
+        alertify.success('Reporte generado correctamente');
+
+    } catch (e) {
+        console.error('Error generando reporte:', e);
+        alertify.error('Error generando el reporte Excel');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generar Excel';
+    }
+}
+
+// ---- Helpers de tiempo ----
+
+function timeToMinutes(timeStr) {
+    if (!timeStr) return 0;
+    const parts = String(timeStr).split(':');
+    return parseInt(parts[0] || 0) * 60 + parseInt(parts[1] || 0);
+}
+
+function minutesToHHMM(mins) {
+    if (mins < 0) mins = 0;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
+function getFechasEnRango(fechaInicial, fechaFinal) {
+    const fechas = [];
+    let current = new Date(fechaInicial + 'T12:00:00');
+    const fin = new Date(fechaFinal + 'T12:00:00');
+    while (current <= fin) {
+        fechas.push(current.toISOString().split('T')[0]);
+        current.setDate(current.getDate() + 1);
+    }
+    return fechas;
+}
+
+function calcularTardanza(horaEntradaReal, horaInicioProg) {
+    if (!horaEntradaReal || !horaInicioProg) return 0;
+    const diff = timeToMinutes(horaEntradaReal) - timeToMinutes(horaInicioProg);
+    return diff > 5 ? diff : 0;
+}
+
+function calcularSalidaTemprana(horaSalidaReal, horaFinProg) {
+    if (!horaSalidaReal || !horaFinProg) return 0;
+    const diff = timeToMinutes(horaFinProg) - timeToMinutes(horaSalidaReal);
+    return diff > 5 ? diff : 0;
+}
+
+function calcularMinProgramados(prog) {
+    if (!prog || !prog.horaInicio || !prog.horaFin) return 0;
+    let mins = timeToMinutes(prog.horaFin) - timeToMinutes(prog.horaInicio);
+    if (prog.nocturno == 1) mins += 24 * 60;
+    if (prog.horaInicioDescanso && prog.horaFinDescanso) {
+        mins -= (timeToMinutes(prog.horaFinDescanso) - timeToMinutes(prog.horaInicioDescanso));
+    }
+    return Math.max(0, mins);
+}
+
+// ---- Helpers de estilo Excel ----
+
+const XL_COLORS = {
+    headerBg:   '1F4E79',  // azul oscuro
+    headerFont: 'FFFFFF',  // blanco
+    rowEven:    'DEEAF1',  // azul muy claro
+    rowOdd:     'FFFFFF',  // blanco
+    border:     'BDD7EE',  // azul borde
+    sectionBg:  '2E75B6',  // azul medio (títulos de sección)
+    labelBg:    'D6E4F0',  // azul pálido (etiquetas)
+    normalFg:   '375623',  // verde oscuro
+    normalBg:   'E2EFDA',  // verde claro
+    tardanzaBg: 'FFF2CC',  // amarillo
+    tardanzaFg: '7F6000',
+    noMarcoBg:  'FFE0E0',  // rojo claro
+    noMarcoFg:  'C00000',
+    sobreBg:    'EBF3FB',  // azul pálido
+    sobreFg:    '1F4E79'
+};
+
+function xlBorderAll(color) {
+    const side = { style: 'thin', color: { rgb: color } };
+    return { top: side, bottom: side, left: side, right: side };
+}
+
+function xlCellStyle(bg, fontColor, bold, sz, horizontal) {
+    return {
+        font:      { bold: !!bold, sz: sz || 10, color: { rgb: fontColor || '1A1A1A' }, name: 'Calibri' },
+        fill:      { fgColor: { rgb: bg || 'FFFFFF' } },
+        alignment: { horizontal: horizontal || 'center', vertical: 'center', wrapText: false },
+        border:    xlBorderAll(XL_COLORS.border)
+    };
+}
+
+function applySheetStyle(ws, rows) {
+    if (!ws['!ref']) return ws;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+
+    // Anchos de columna basados en contenido
+    const colWidths = [];
+    rows.forEach(row => {
+        row.forEach((cell, c) => {
+            const len = cell != null ? String(cell).length : 0;
+            colWidths[c] = Math.max(colWidths[c] || 8, Math.min(len + 3, 45));
+        });
+    });
+    ws['!cols'] = colWidths.map(w => ({ wch: w }));
+
+    // Altura de filas
+    ws['!rows'] = [];
+    for (let R = range.s.r; R <= range.e.r; R++) {
+        ws['!rows'][R] = { hpx: R === 0 ? 22 : 16 };
+    }
+
+    // Estilos celda a celda
+    for (let R = range.s.r; R <= range.e.r; R++) {
+        for (let C = range.s.c; C <= range.e.c; C++) {
+            const addr = XLSX.utils.encode_cell({ r: R, c: C });
+            if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+            if (R === 0) {
+                // Header: azul oscuro, blanco, negrita, mayúsculas
+                if (ws[addr].v && typeof ws[addr].v === 'string') {
+                    ws[addr].v = ws[addr].v.toUpperCase();
+                }
+                ws[addr].s = xlCellStyle(XL_COLORS.headerBg, XL_COLORS.headerFont, true, 10, 'center');
+            } else {
+                const bg = R % 2 === 0 ? XL_COLORS.rowEven : XL_COLORS.rowOdd;
+                ws[addr].s = xlCellStyle(bg, '1A1A1A', false, 10, 'center');
+            }
+        }
+    }
+    return ws;
+}
+
+function applyEstadoColors(ws, rows, estadoColIndex) {
+    // Colorea la columna Estado según el valor
+    for (let R = 1; R < rows.length; R++) {
+        const estado = String(rows[R][estadoColIndex] || '');
+        const addr = XLSX.utils.encode_cell({ r: R, c: estadoColIndex });
+        if (!ws[addr]) continue;
+        let bg, fg;
+        if (estado === 'NORMAL') {
+            bg = XL_COLORS.normalBg; fg = XL_COLORS.normalFg;
+        } else if (estado === 'NO MARCÓ') {
+            bg = XL_COLORS.noMarcoBg; fg = XL_COLORS.noMarcoFg;
+        } else if (estado.includes('SOBRETIEMPO') && !estado.includes('TARDANZA') && !estado.includes('SALIDA')) {
+            bg = XL_COLORS.sobreBg; fg = XL_COLORS.sobreFg;
+        } else {
+            bg = XL_COLORS.tardanzaBg; fg = XL_COLORS.tardanzaFg;
+        }
+        ws[addr].s = xlCellStyle(bg, fg, true, 10, 'center');
+    }
+}
+
+// ---- Builders de hojas ----
+
+function buildSheetDatosBrutos(rawData) {
+    const headers = ['Fecha', 'Día', 'Cargo', 'Nombre', 'Cédula', 'Jornada',
+        'Entrada', 'Inicio Receso', 'Total 1ra Jornada', 'Fin Receso',
+        'Salida', 'Total 2da Jornada', 'Tiempo Total', 'Sobretiempo'];
+    const rows = [headers];
+    rawData.forEach(r => {
+        rows.push([
+            r.fecha, r.diaSemana, r.cargo, r.nombre, r.cedula, r.jornada,
+            r.inicioJornada || '', r.inicioReceso || '', r.total1ra || '',
+            r.finReceso || '', r.finJornada || '', r.total2da || '',
+            r.tiempoTotal || '', r.sobretiempo || ''
+        ]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    return applySheetStyle(ws, rows);
+}
+
+function buildSheetListadoEmpleados(listado) {
+    const headers = ['Cédula', 'Nombre', 'Cargo', 'Jornada', 'Área', 'Director', 'Correo'];
+    const rows = [headers];
+    listado.forEach(emp => {
+        rows.push([emp.cedula, emp.nombre, emp.cargo, emp.jornada, emp.area, emp.director, emp.correo]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    return applySheetStyle(ws, rows);
+}
+
+function buildSheetResultados(rawData, listado, programacion, fechaInicial, fechaFinal) {
+    const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const fechas = getFechasEnRango(fechaInicial, fechaFinal);
+
+    const headers = ['Fecha', 'Día', 'Nombre', 'Cédula', 'Cargo',
+        'Entrada Prog.', 'Salida Prog.', 'Entrada Real', 'Salida Real',
+        'Min. Programados', 'Min. Trabajados', 'Tardanza (min)', 'Salida Temprana (min)',
+        'Sobretiempo', 'Estado'];
+    const rows = [headers];
+
+    const resumenPorEmpleado = {};
+    listado.forEach(emp => {
+        resumenPorEmpleado[emp.cedula] = {
+            cedula: emp.cedula, nombre: emp.nombre, cargo: emp.cargo,
+            jornada: emp.jornada, area: emp.area, director: emp.director, correo: emp.correo,
+            diasProgramados: 0, diasMarcados: 0, diasSinMarcar: 0,
+            diasConTardanza: 0, diasSalidaTemprana: 0, minSobretiempoTotal: 0,
+            excepciones: [], diasNoMarcados: []
+        };
+    });
+
+    fechas.forEach(fecha => {
+        const diaNombre = diasSemana[new Date(fecha + 'T12:00:00').getDay()];
+
+        listado.forEach(emp => {
+            const prog = programacion.find(p => p.cedula == emp.cedula && fecha >= p.fechaInicio && fecha <= p.fechaFin);
+            if (!prog) return;
+
+            const raw = rawData.find(r => r.cedula == emp.cedula && r.fecha == fecha);
+            const res = resumenPorEmpleado[emp.cedula];
+            res.diasProgramados++;
+
+            const entradaProg = prog.horaInicio || '';
+            const salidaProg = prog.horaFin || '';
+            const minProg = calcularMinProgramados(prog);
+
+            if (!raw) {
+                res.diasSinMarcar++;
+                res.diasNoMarcados.push(fecha);
+                rows.push([fecha, diaNombre, emp.nombre, emp.cedula, emp.cargo,
+                    entradaProg, salidaProg, '', '', minProg, 0, 0, 0, '', 'NO MARCÓ']);
+                res.excepciones.push({
+                    fecha, diaNombre, nombre: emp.nombre, cedula: emp.cedula, cargo: emp.cargo,
+                    entradaProg, salidaProg, entradaReal: '', salidaReal: '',
+                    minProg, minTrabajados: 0, tardanza: 0, salidaTemprana: 0, sobretiempo: '', estado: 'NO MARCÓ'
+                });
+            } else {
+                res.diasMarcados++;
+                const entradaReal = raw.inicioJornada || '';
+                const salidaReal = raw.finJornada || '';
+                const tardanza = calcularTardanza(entradaReal, entradaProg);
+                const salidaTemprana = calcularSalidaTemprana(salidaReal, salidaProg);
+                const minTrabajados = raw.tiempoTotal ? timeToMinutes(raw.tiempoTotal) : 0;
+                const minSobretiempo = raw.sobretiempo ? timeToMinutes(raw.sobretiempo) : 0;
+
+                if (tardanza > 0) res.diasConTardanza++;
+                if (salidaTemprana > 0) res.diasSalidaTemprana++;
+                res.minSobretiempoTotal += minSobretiempo;
+
+                const anomalias = [];
+                if (tardanza > 0) anomalias.push('TARDANZA');
+                if (salidaTemprana > 0) anomalias.push('SALIDA TEMPRANA');
+                if (minSobretiempo > 0) anomalias.push('SOBRETIEMPO');
+                const estado = anomalias.length > 0 ? anomalias.join(' / ') : 'NORMAL';
+
+                rows.push([fecha, diaNombre, emp.nombre, emp.cedula, emp.cargo,
+                    entradaProg, salidaProg, entradaReal, salidaReal,
+                    minProg, minTrabajados, tardanza, salidaTemprana, raw.sobretiempo || '', estado]);
+
+                if (anomalias.length > 0) {
+                    res.excepciones.push({
+                        fecha, diaNombre, nombre: emp.nombre, cedula: emp.cedula, cargo: emp.cargo,
+                        entradaProg, salidaProg, entradaReal, salidaReal,
+                        minProg, minTrabajados, tardanza, salidaTemprana, sobretiempo: raw.sobretiempo || '', estado
+                    });
+                }
+            }
+        });
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    applySheetStyle(ws, rows);
+    applyEstadoColors(ws, rows, headers.length - 1); // columna Estado es la última
+    return { sheetResultados: ws, resumenPorEmpleado };
+}
+
+function buildSheetExcepciones(resumenPorEmpleado) {
+    const headers = ['Fecha', 'Día', 'Nombre', 'Cédula', 'Cargo',
+        'Entrada Prog.', 'Salida Prog.', 'Entrada Real', 'Salida Real',
+        'Min. Programados', 'Min. Trabajados', 'Tardanza (min)', 'Salida Temprana (min)',
+        'Sobretiempo', 'Estado'];
+    const rows = [headers];
+    Object.values(resumenPorEmpleado).forEach(emp => {
+        emp.excepciones.forEach(exc => {
+            rows.push([
+                exc.fecha, exc.diaNombre, exc.nombre, exc.cedula, exc.cargo,
+                exc.entradaProg, exc.salidaProg, exc.entradaReal, exc.salidaReal,
+                exc.minProg, exc.minTrabajados, exc.tardanza, exc.salidaTemprana,
+                exc.sobretiempo, exc.estado
+            ]);
+        });
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    applySheetStyle(ws, rows);
+    applyEstadoColors(ws, rows, headers.length - 1);
+    return ws;
+}
+
+function buildSheetNoMarco(resumenPorEmpleado) {
+    const headers = ['Cédula', 'Nombre', 'Cargo', 'Jornada', 'Área', 'Director', 'Correo',
+        'Días Programados', 'Días Sin Marcar', '% Ausentismo', 'Fechas Sin Marcar'];
+    const rows = [headers];
+    Object.values(resumenPorEmpleado).forEach(emp => {
+        if (emp.diasNoMarcados.length > 0) {
+            const pct = emp.diasProgramados > 0
+                ? ((emp.diasSinMarcar / emp.diasProgramados) * 100).toFixed(1) + '%' : '0%';
+            rows.push([
+                emp.cedula, emp.nombre, emp.cargo, emp.jornada, emp.area, emp.director, emp.correo,
+                emp.diasProgramados, emp.diasSinMarcar, pct, emp.diasNoMarcados.join(', ')
+            ]);
+        }
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    return applySheetStyle(ws, rows);
+}
+
+function generarReportePDF() {
+    const tabla = document.getElementById('tabla_jornadas');
+    if (!tabla) { alertify.error('Primero debe realizar una consulta'); return; }
+
+    const filas = tabla.querySelectorAll('thead tr th');
+    const cuerpo = tabla.querySelectorAll('tbody tr');
+    if (cuerpo.length === 0) { alertify.error('No hay datos para exportar'); return; }
+
+    const headers = Array.from(filas).map(th => ({ text: th.innerText, bold: true, fillColor: '#3c8dbc', color: 'white', fontSize: 7 }));
+    const body = [headers];
+    cuerpo.forEach(tr => {
+        const cells = Array.from(tr.querySelectorAll('td')).map(td => ({ text: td.innerText, fontSize: 7 }));
+        body.push(cells);
+    });
+
+    const docDef = {
+        pageOrientation: 'landscape',
+        content: [{ table: { headerRows: 1, body }, layout: 'lightHorizontalLines' }],
+        defaultStyle: { font: 'Roboto' }
+    };
+    pdfMake.createPdf(docDef).download('Consulta_CentroTrabajo.pdf');
+}
+
+function imprimirTabla() {
+    const tabla = document.getElementById('tabla_jornadas');
+    if (!tabla) { alertify.error('Primero debe realizar una consulta'); return; }
+
+    const win = window.open('', '_blank');
+    win.document.write(`<html><head><title>Consulta Centro de Trabajo</title>
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+        <style>body{padding:20px} @media print{button{display:none}}</style>
+        </head><body>
+        <button onclick="window.print()" class="btn btn-primary" style="margin-bottom:10px">Imprimir</button>
+        ${tabla.outerHTML}
+        </body></html>`);
+    win.document.close();
+}
+
+function buildSheetInforme(resumenPorEmpleado, centroInfo, fechaInicial, fechaFinal) {
+    let totalProg = 0, totalMarcados = 0, totalSinMarcar = 0;
+    let totalTardanzas = 0, totalSalidaTemprana = 0, totalSobretiempoMin = 0;
+    Object.values(resumenPorEmpleado).forEach(emp => {
+        totalProg        += emp.diasProgramados;
+        totalMarcados    += emp.diasMarcados;
+        totalSinMarcar   += emp.diasSinMarcar;
+        totalTardanzas   += emp.diasConTardanza;
+        totalSalidaTemprana += emp.diasSalidaTemprana;
+        totalSobretiempoMin += emp.minSobretiempoTotal;
+    });
+    const pctAsistencia = totalProg > 0 ? ((totalMarcados / totalProg) * 100).toFixed(1) + '%' : '0%';
+
+    const detHeaders = ['CÉDULA', 'NOMBRE', 'CARGO', 'DÍAS PROG.', 'DÍAS MARCADOS',
+        'DÍAS SIN MARCAR', '% ASISTENCIA', 'CON TARDANZA', 'SALIDA TEMPRANA', 'SOBRETIEMPO'];
+
+    // Filas mixtas (título, datos, encabezados de tabla)
+    const rows = [
+        ['INFORME DE ASISTENCIA', '', '', '', '', '', '', '', '', ''],
+        ['CENTRO DE TRABAJO', centroInfo.nombre, '', '', '', '', '', '', '', ''],
+        ['EMPRESA', centroInfo.empresa, '', '', '', '', '', '', '', ''],
+        ['PERÍODO', fechaInicial + ' al ' + fechaFinal, '', '', '', '', '', '', '', ''],
+        [],
+        ['RESUMEN GENERAL', '', '', '', '', '', '', '', '', ''],
+        ['TOTAL EMPLEADOS', Object.keys(resumenPorEmpleado).length, '', '', '', '', '', '', '', ''],
+        ['DÍAS-PERSONA PROGRAMADOS', totalProg, '', '', '', '', '', '', '', ''],
+        ['DÍAS-PERSONA MARCADOS', totalMarcados, '', '', '', '', '', '', '', ''],
+        ['DÍAS-PERSONA SIN MARCAR', totalSinMarcar, '', '', '', '', '', '', '', ''],
+        ['% ASISTENCIA GENERAL', pctAsistencia, '', '', '', '', '', '', '', ''],
+        ['TOTAL DÍAS CON TARDANZA', totalTardanzas, '', '', '', '', '', '', '', ''],
+        ['TOTAL DÍAS SALIDA TEMPRANA', totalSalidaTemprana, '', '', '', '', '', '', '', ''],
+        ['TOTAL SOBRETIEMPO', minutesToHHMM(totalSobretiempoMin), '', '', '', '', '', '', '', ''],
+        [],
+        detHeaders
+    ];
+
+    // Índice de la fila donde empiezan los datos del detalle
+    const detalleStartRow = rows.length;
+
+    Object.values(resumenPorEmpleado).forEach(emp => {
+        const pct = emp.diasProgramados > 0
+            ? ((emp.diasMarcados / emp.diasProgramados) * 100).toFixed(1) + '%' : '0%';
+        rows.push([
+            emp.cedula, emp.nombre, emp.cargo,
+            emp.diasProgramados, emp.diasMarcados, emp.diasSinMarcar,
+            pct, emp.diasConTardanza, emp.diasSalidaTemprana,
+            minutesToHHMM(emp.minSobretiempoTotal)
+        ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    if (!ws['!ref']) return ws;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+
+    // Anchos de columna
+    const colWidths = [];
+    rows.forEach(row => {
+        row.forEach((cell, c) => {
+            const len = cell != null ? String(cell).length : 0;
+            colWidths[c] = Math.max(colWidths[c] || 8, Math.min(len + 3, 45));
+        });
+    });
+    ws['!cols'] = colWidths.map(w => ({ wch: w }));
+
+    // Estilo por fila
+    for (let R = range.s.r; R <= range.e.r; R++) {
+        for (let C = range.s.c; C <= range.e.c; C++) {
+            const addr = XLSX.utils.encode_cell({ r: R, c: C });
+            if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+
+            const row = rows[R];
+            const isTitle = R === 0;
+            const isSectionHeader = R === 5 || R === 15; // INFORME, RESUMEN, DETALLE
+            const isLabelRow = R >= 1 && R <= 13 && R !== 0 && R !== 5;
+            const isDetHeader = R === 15;
+            const isDetData = R >= detalleStartRow;
+            const isEmpty = !row || row.every(v => v === '' || v == null);
+
+            let s;
+            if (isTitle) {
+                s = xlCellStyle(XL_COLORS.headerBg, XL_COLORS.headerFont, true, 13, 'center');
+            } else if (isDetHeader) {
+                s = xlCellStyle(XL_COLORS.headerBg, XL_COLORS.headerFont, true, 10, 'center');
+            } else if (isSectionHeader) {
+                s = xlCellStyle(XL_COLORS.sectionBg, XL_COLORS.headerFont, true, 11, 'left');
+            } else if (isLabelRow) {
+                s = C === 0
+                    ? xlCellStyle(XL_COLORS.labelBg, '1F4E79', true, 10, 'left')
+                    : xlCellStyle('FFFFFF', '1A1A1A', false, 10, 'left');
+            } else if (isDetData) {
+                const bg = R % 2 === 0 ? XL_COLORS.rowEven : XL_COLORS.rowOdd;
+                s = xlCellStyle(bg, '1A1A1A', false, 10, 'center');
+            } else {
+                s = xlCellStyle('FFFFFF', '1A1A1A', false, 10, 'left');
+            }
+            ws[addr].s = s;
+        }
+    }
+
+    // Alturas
+    ws['!rows'] = rows.map((_, i) => ({ hpx: i === 0 ? 26 : i === 5 || i === 15 ? 22 : 16 }));
+    return ws;
+}

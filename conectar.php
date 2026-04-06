@@ -1,5 +1,5 @@
 <?php
-$Servidor = "localhost\SQLEXPRESS";
+$Servidor = "127.0.0.1,1433";
 $connectionInfo = [
     "Database" => "Traz",
     "UID" => "Sa",

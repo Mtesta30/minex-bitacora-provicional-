@@ -24,7 +24,7 @@ $_SESSION['permisos_todos'] = array(
     'ASIGNAR_TURNOS' => true
 );
 
-echo "<script>
+echo "<script> 
 var id_usuario = '" . $_SESSION['idUsuario'] . "';
 </script>";
 
@@ -67,8 +67,14 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/multiple-select@1.5.2/dist/multiple-select.min.css">
     <script src="https://cdn.jsdelivr.net/npm/multiple-select@1.5.2/dist/multiple-select.min.js"></script>
 
+    <!-- SheetJS base (fallback sin estilos) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- SheetJS con estilos (override si carga) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx-js-style.min.js"></script>
+    <script>if (typeof XLSXStyle !== 'undefined') { window.XLSX = XLSXStyle; }</script>
+
     <!-- Controlador -->
-    <script type="text/javascript" src="../controlador/jornada_bitacora.js?v=20260327-2"></script>
+    <script type="text/javascript" src="../controlador/jornada_bitacora.js?v=20260331-1"></script>
 </head>
 
 <body>
@@ -346,7 +352,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
                         <label for="CentroTrabajoMina">Centro de Trabajo:</label>
                         <input type="text" id="CentroTrabajo_consulta" list="list_Centrotrabajo_consulta" class="form-control"
-                            onkeyup="list_Centrotrabajo(this, 'consulta')" />
+                            onkeyup="list_Centrotrabajo(this, 'consulta')" onchange="cargarCargosCentroTrabajo()" />
                         <datalist id="list_Centrotrabajo_consulta"></datalist>
                     </div>
                     <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
@@ -360,18 +366,23 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     <div class="clearfix"></div>
                     <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
                         <label for="CargoMina">Cargo:</label>
-                        <input type="text" id="CargoMina" list="list_CargoMina" class="form-control" placeholder="Opcion no Disponible por el Momento" onkeyup="list_CargoMina(this)" disabled />
+                        <input type="text" id="CargoMina" list="list_CargoMina" class="form-control" placeholder="Todos los cargos" onchange="cargarUsuariosCentroTrabajo()" />
                         <datalist id="list_CargoMina"></datalist>
                     </div>
                     <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
                         <label for="UsuarioMina">Usuario:</label>
-                        <input type="text" id="UsuarioMina" list="list_UsuarioMina" class="form-control" placeholder="Opcion no Disponible por el Momento" onkeyup="list_UsuarioMina(this)" disabled />
+                        <input type="text" id="UsuarioMina" list="list_UsuarioMina" class="form-control" placeholder="Todos los usuarios" />
                         <datalist id="list_UsuarioMina"></datalist>
                     </div>
                     <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
-                        <label>&nbsp;</label><br>
+                    <label>&nbsp;</label><br>
+                    <div class="btn btn-default me-2"> 
                         <button type="button" id="button_mina" class="btn btn-primary" onclick="get_ConsultaCentroTrabajo()">Buscar</button>
+                        <button type="button" id="button_reporte_excel" class="btn btn-success" onclick="generarReporteAsistencia()">Generar Excel</button>
+                        <button type="button" id="button_reporte_pdf" class="btn btn-success" onclick="generarReportePDF()">Generar PDF</button>
+                        <button type="button" id="button_imprimir" class="btn btn-success" onclick="imprimirTabla()">Imprimir</button>
                     </div>
+                </div>
                 </div>
                 <div class="table-responsive">
                     <div id="div_tabla_centrotrabajo"></div>
