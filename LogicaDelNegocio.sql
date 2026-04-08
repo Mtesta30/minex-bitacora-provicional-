@@ -1488,7 +1488,7 @@ BEGIN
                          THEN EntradaReal 
                          ELSE DATEADD(DAY, -1, EntradaReal) END,
                     DATEADD(DAY, CASE WHEN CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) < HoraInicioDescanso THEN 0 ELSE 1 END, 
-                           CAST(HoraInicioDescanso AS DATETIME)))/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
+                           DATEADD(SECOND, DATEDIFF(SECOND, 0, HoraInicioDescanso), CAST(CAST(EntradaReal AS DATE) AS DATETIME))))/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
             ELSE NULL
         END AS Total1raJornada,
 
@@ -1498,7 +1498,7 @@ BEGIN
                 CAST(CAST(DATEDIFF(MINUTE, ReingresoDescanso, ISNULL(SalidaReal, '23:59:59'))/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
             WHEN HoraFinDescanso IS NOT NULL THEN 
                 CAST(CAST(DATEDIFF(MINUTE, 
-                    CAST(HoraFinDescanso AS DATETIME),
+                    DATEADD(SECOND, DATEDIFF(SECOND, 0, HoraFinDescanso), CAST(CAST(EntradaReal AS DATE) AS DATETIME)),
                     CASE WHEN CAST(ISNULL(SalidaReal, '23:59:59') AS TIME) > HoraFinDescanso 
                          THEN SalidaReal 
                          ELSE DATEADD(DAY, 1, SalidaReal) END)/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
@@ -1516,9 +1516,9 @@ BEGIN
                          THEN EntradaReal 
                          ELSE DATEADD(DAY, -1, EntradaReal) END,
                     DATEADD(DAY, CASE WHEN CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) < HoraInicioDescanso THEN 0 ELSE 1 END, 
-                           CAST(HoraInicioDescanso AS DATETIME))) +
+                           DATEADD(SECOND, DATEDIFF(SECOND, 0, HoraInicioDescanso), CAST(CAST(EntradaReal AS DATE) AS DATETIME)))) +
                       DATEDIFF(MINUTE, 
-                    CAST(HoraFinDescanso AS DATETIME),
+                    DATEADD(SECOND, DATEDIFF(SECOND, 0, HoraFinDescanso), CAST(CAST(EntradaReal AS DATE) AS DATETIME)),
                     CASE WHEN CAST(ISNULL(SalidaReal, '23:59:59') AS TIME) > HoraFinDescanso 
                          THEN SalidaReal 
                          ELSE DATEADD(DAY, 1, SalidaReal) END))/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'
@@ -1540,9 +1540,9 @@ BEGIN
                          THEN EntradaReal 
                          ELSE DATEADD(DAY, -1, EntradaReal) END,
                     DATEADD(DAY, CASE WHEN CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) < HoraInicioDescanso THEN 0 ELSE 1 END, 
-                           CAST(HoraInicioDescanso AS DATETIME))) +
+                           DATEADD(SECOND, DATEDIFF(SECOND, 0, HoraInicioDescanso), CAST(CAST(EntradaReal AS DATE) AS DATETIME)))) +
                       DATEDIFF(MINUTE, 
-                    CAST(HoraFinDescanso AS DATETIME),
+                    DATEADD(SECOND, DATEDIFF(SECOND, 0, HoraFinDescanso), CAST(CAST(EntradaReal AS DATE) AS DATETIME)),
                     CASE WHEN CAST(ISNULL(SalidaReal, '23:59:59') AS TIME) > HoraFinDescanso 
                          THEN SalidaReal 
                          ELSE DATEADD(DAY, 1, SalidaReal) END)) > 480 THEN
@@ -1551,9 +1551,9 @@ BEGIN
                              THEN EntradaReal 
                              ELSE DATEADD(DAY, -1, EntradaReal) END,
                         DATEADD(DAY, CASE WHEN CAST(ISNULL(EntradaReal, '00:00:00') AS TIME) < HoraInicioDescanso THEN 0 ELSE 1 END, 
-                               CAST(HoraInicioDescanso AS DATETIME))) +
+                               DATEADD(SECOND, DATEDIFF(SECOND, 0, HoraInicioDescanso), CAST(CAST(EntradaReal AS DATE) AS DATETIME)))) +
                           DATEDIFF(MINUTE, 
-                        CAST(HoraFinDescanso AS DATETIME),
+                        DATEADD(SECOND, DATEDIFF(SECOND, 0, HoraFinDescanso), CAST(CAST(EntradaReal AS DATE) AS DATETIME)),
                         CASE WHEN CAST(ISNULL(SalidaReal, '23:59:59') AS TIME) > HoraFinDescanso 
                              THEN SalidaReal 
                              ELSE DATEADD(DAY, 1, SalidaReal) END)) - 480)/60.0 AS DECIMAL(10,2)) AS VARCHAR(20)) + ' hrs'

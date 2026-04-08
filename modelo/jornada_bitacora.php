@@ -3603,7 +3603,7 @@ if (isset($_GET['band'])) {
                 $json = respuestaExito(array(), 'Sin filtro de centro');
             } else {
                 $fuenteUsuarios = obtenerSqlFuenteUsuarios($conn, 'VU');
-                $sql = "SELECT DISTINCT VU.idUsuario, VU.NombreCompleto, VU.Identificacion
+                $sql = "SELECT DISTINCT VU.idUsuario, VU.NombreCompleto, VU.Identificacion, VU.Cargo
                         FROM ProgramacionTurnos PT
                         INNER JOIN {$fuenteUsuarios} ON PT.idUsuario = VU.idUsuario
                         WHERE PT.idCentroTrabajo = ? AND PT.activo = 1";
@@ -3620,7 +3620,8 @@ if (isset($_GET['band'])) {
                         $data[] = array(
                             'id' => $row['idUsuario'],
                             'name' => normalizarTextoSalida($row['NombreCompleto']),
-                            'cedula' => $row['Identificacion']
+                            'cedula' => $row['Identificacion'],
+                            'cargo' => normalizarTextoSalida($row['Cargo'])
                         );
                     }
                 }
@@ -3645,14 +3646,25 @@ if (isset($_GET['band'])) {
                 // 1. RAW DATA via SP
                 $rawData = array();
                 $resSP = sqlsrv_query($conn,
-                    "EXEC [dbo].[GET_ReporteJornadasLaborales] @FechaInicio=?, @FechaFin=?, @IdCentroTrabajo=?, @IdUsuario=NULL, @Cargo=NULL",
+                    "EXEC [dbo].[GET_ReporteJornadasLaborales]
+                        @FechaInicio = ?,
+                        @FechaFin = ?,
+                        @IdCentroTrabajo = ?,
+                        @IdUsuario = ?,
+                        @Cargo = ?",
                     array(
                         $fechaInicial,
                         $fechaFinal,
-                        array($idCentroTrabajo, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_UNIQUEIDENTIFIER)
+                        array($idCentroTrabajo, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_UNIQUEIDENTIFIER),
+                        array(null,             SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_UNIQUEIDENTIFIER),
+                        null
                     )
                 );
-                if ($resSP !== false) {
+                $spError = null;
+                if ($resSP === false) {
+                    $spErrors = sqlsrv_errors();
+                    $spError = isset($spErrors[0]['message']) ? $spErrors[0]['message'] : 'Error desconocido al ejecutar SP';
+                } else {
                     while ($row = sqlsrv_fetch_array($resSP, SQLSRV_FETCH_ASSOC)) {
                         $rawData[] = array(
                             'fecha'         => $row['Fecha']->format('Y-m-d'),
@@ -3768,7 +3780,8 @@ if (isset($_GET['band'])) {
                     'programacion'=> $programacion,
                     'centroInfo'  => $centroInfo,
                     'fechaInicial'=> $fechaInicial,
-                    'fechaFinal'  => $fechaFinal
+                    'fechaFinal'  => $fechaFinal,
+                    'spError'     => $spError
                 ), 'Datos de reporte obtenidos correctamente');
             }
         } catch (Exception $e) {

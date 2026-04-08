@@ -371,7 +371,7 @@ var id_usuario = '" . $_SESSION['idUsuario'] . "';
                     </div>
                     <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">
                         <label for="UsuarioMina">Usuario:</label>
-                        <input type="text" id="UsuarioMina" list="list_UsuarioMina" class="form-control" placeholder="Todos los usuarios" />
+                        <input type="text" id="UsuarioMina" list="list_UsuarioMina" class="form-control" placeholder="Todos los usuarios" onchange="sincronizarCargoPorUsuario()" />
                         <datalist id="list_UsuarioMina"></datalist>
                     </div>
                     <div class="col-xs-4 col-sm-4 col-md-4 col-lg-4">

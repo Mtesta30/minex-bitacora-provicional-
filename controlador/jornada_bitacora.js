@@ -4886,11 +4886,26 @@ async function cargarUsuariosCentroTrabajo() {
                 const opt = document.createElement('option');
                 opt.value = item.name;
                 opt.setAttribute('data-id', item.id);
+                opt.setAttribute('data-cargo', item.cargo || '');
                 listUsuario.appendChild(opt);
             });
         }
     } catch (e) {
         console.error('Error cargando usuarios:', e);
+    }
+}
+
+function sincronizarCargoPorUsuario() {
+    const inputUsuario = document.getElementById('UsuarioMina');
+    const listUsuario = document.getElementById('list_UsuarioMina');
+    const inputCargo = document.getElementById('CargoMina');
+
+    const selectedOption = [...listUsuario.options].find(o => o.value === inputUsuario.value);
+    if (selectedOption) {
+        const cargo = selectedOption.getAttribute('data-cargo');
+        if (cargo) {
+            inputCargo.value = cargo;
+        }
     }
 }
 
@@ -4921,7 +4936,11 @@ async function generarReporteAsistencia() {
             return;
         }
 
-        const { rawData, listado, programacion, centroInfo } = result.data;
+        const { rawData, listado, programacion, centroInfo, spError } = result.data;
+
+        if (spError) {
+            alertify.warning('Datos Brutos vacíos — error al ejecutar el SP: ' + spError);
+        }
 
         const wb = XLSX.utils.book_new();
 
@@ -5068,6 +5087,9 @@ function applySheetStyle(ws, rows) {
             }
         }
     }
+    // AutoFiltro en la fila de encabezados
+    ws['!autofilter'] = { ref: ws['!ref'] };
+
     return ws;
 }
 
@@ -5100,7 +5122,7 @@ function buildSheetDatosBrutos(rawData) {
     const rows = [headers];
     rawData.forEach(r => {
         rows.push([
-            r.fecha, r.diaSemana, r.cargo, r.nombre, r.cedula, r.jornada,
+            r.fecha, r.diaSemana, r.cargo || 'NO ESPECIFICADO', r.nombre, r.cedula, r.jornada,
             r.inicioJornada || '', r.inicioReceso || '', r.total1ra || '',
             r.finReceso || '', r.finJornada || '', r.total2da || '',
             r.tiempoTotal || '', r.sobretiempo || ''
@@ -5114,7 +5136,7 @@ function buildSheetListadoEmpleados(listado) {
     const headers = ['Cédula', 'Nombre', 'Cargo', 'Jornada', 'Área', 'Director', 'Correo'];
     const rows = [headers];
     listado.forEach(emp => {
-        rows.push([emp.cedula, emp.nombre, emp.cargo, emp.jornada, emp.area, emp.director, emp.correo]);
+        rows.push([emp.cedula, emp.nombre, emp.cargo || 'NO ESPECIFICADO', emp.jornada, emp.area, emp.director, emp.correo]);
     });
     const ws = XLSX.utils.aoa_to_sheet(rows);
     return applySheetStyle(ws, rows);
@@ -5133,7 +5155,7 @@ function buildSheetResultados(rawData, listado, programacion, fechaInicial, fech
     const resumenPorEmpleado = {};
     listado.forEach(emp => {
         resumenPorEmpleado[emp.cedula] = {
-            cedula: emp.cedula, nombre: emp.nombre, cargo: emp.cargo,
+            cedula: emp.cedula, nombre: emp.nombre, cargo: emp.cargo || 'NO ESPECIFICADO',
             jornada: emp.jornada, area: emp.area, director: emp.director, correo: emp.correo,
             diasProgramados: 0, diasMarcados: 0, diasSinMarcar: 0,
             diasConTardanza: 0, diasSalidaTemprana: 0, minSobretiempoTotal: 0,
@@ -5159,10 +5181,10 @@ function buildSheetResultados(rawData, listado, programacion, fechaInicial, fech
             if (!raw) {
                 res.diasSinMarcar++;
                 res.diasNoMarcados.push(fecha);
-                rows.push([fecha, diaNombre, emp.nombre, emp.cedula, emp.cargo,
+                rows.push([fecha, diaNombre, emp.nombre, emp.cedula, emp.cargo || 'NO ESPECIFICADO',
                     entradaProg, salidaProg, '', '', minProg, 0, 0, 0, '', 'NO MARCÓ']);
                 res.excepciones.push({
-                    fecha, diaNombre, nombre: emp.nombre, cedula: emp.cedula, cargo: emp.cargo,
+                    fecha, diaNombre, nombre: emp.nombre, cedula: emp.cedula, cargo: emp.cargo || 'NO ESPECIFICADO',
                     entradaProg, salidaProg, entradaReal: '', salidaReal: '',
                     minProg, minTrabajados: 0, tardanza: 0, salidaTemprana: 0, sobretiempo: '', estado: 'NO MARCÓ'
                 });
@@ -5185,13 +5207,13 @@ function buildSheetResultados(rawData, listado, programacion, fechaInicial, fech
                 if (minSobretiempo > 0) anomalias.push('SOBRETIEMPO');
                 const estado = anomalias.length > 0 ? anomalias.join(' / ') : 'NORMAL';
 
-                rows.push([fecha, diaNombre, emp.nombre, emp.cedula, emp.cargo,
+                rows.push([fecha, diaNombre, emp.nombre, emp.cedula, emp.cargo || 'NO ESPECIFICADO',
                     entradaProg, salidaProg, entradaReal, salidaReal,
                     minProg, minTrabajados, tardanza, salidaTemprana, raw.sobretiempo || '', estado]);
 
                 if (anomalias.length > 0) {
                     res.excepciones.push({
-                        fecha, diaNombre, nombre: emp.nombre, cedula: emp.cedula, cargo: emp.cargo,
+                        fecha, diaNombre, nombre: emp.nombre, cedula: emp.cedula, cargo: emp.cargo || 'NO ESPECIFICADO',
                         entradaProg, salidaProg, entradaReal, salidaReal,
                         minProg, minTrabajados, tardanza, salidaTemprana, sobretiempo: raw.sobretiempo || '', estado
                     });
@@ -5215,7 +5237,7 @@ function buildSheetExcepciones(resumenPorEmpleado) {
     Object.values(resumenPorEmpleado).forEach(emp => {
         emp.excepciones.forEach(exc => {
             rows.push([
-                exc.fecha, exc.diaNombre, exc.nombre, exc.cedula, exc.cargo,
+                exc.fecha, exc.diaNombre, exc.nombre, exc.cedula, exc.cargo || 'NO ESPECIFICADO',
                 exc.entradaProg, exc.salidaProg, exc.entradaReal, exc.salidaReal,
                 exc.minProg, exc.minTrabajados, exc.tardanza, exc.salidaTemprana,
                 exc.sobretiempo, exc.estado
@@ -5237,7 +5259,7 @@ function buildSheetNoMarco(resumenPorEmpleado) {
             const pct = emp.diasProgramados > 0
                 ? ((emp.diasSinMarcar / emp.diasProgramados) * 100).toFixed(1) + '%' : '0%';
             rows.push([
-                emp.cedula, emp.nombre, emp.cargo, emp.jornada, emp.area, emp.director, emp.correo,
+                emp.cedula, emp.nombre, emp.cargo || 'NO ESPECIFICADO', emp.jornada, emp.area, emp.director, emp.correo,
                 emp.diasProgramados, emp.diasSinMarcar, pct, emp.diasNoMarcados.join(', ')
             ]);
         }
