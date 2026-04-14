@@ -7,8 +7,7 @@ require_once dirname(__DIR__) . '/conectartraz.php';
  $_SESSION['idUsuario'] = 'c9fa5447-4a96-4309-b6c3-4ffbbdee22fe'; // YUBER LOBO
 
 // Usuario de prueba
-// $_SESSION['idUsuario'] = '84db9cee-72aa-476a-a61b-fab16c5983af'; // INGRID VERONICA ACEVEDO CACERES
-
+//$_SESSION['idUsuario'] = '84db9cee-72aa-476a-a61b-fab16c5983af'; // INGRID VERONICA ACEVEDO CACERES
 //$_SESSION['idUsuario'] = 'E67D0C54-938B-421C-9D95-826E9AC4AD2C'; // JONATHAN BALAGUERA CARVAJALINO
 //$_SESSION['idUsuario'] = 'd8c916d4-7b13-40a7-ad8c-38bae6f76429'; // EMERSON JIMENEZ
 
